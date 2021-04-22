@@ -279,7 +279,7 @@
                 </option>
                 <option>
                     <name>OGChipConfigPath</name>
-                    <state>$TOOLKIT_DIR$\config\devices\_generic\8052.i51</state>
+                    <state>C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.1\8051\bin\..\config\devices\_generic\8052.i51</state>
                 </option>
             </data>
         </settings>
@@ -2224,6 +2224,6 @@
         </settings>
     </configuration>
     <file>
-        <name>$PROJ_DIR$\main.s51</name>
+        <name>$PROJ_DIR$\ej2.s51</name>
     </file>
 </project>

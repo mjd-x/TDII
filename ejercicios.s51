@@ -1,0 +1,280 @@
+;-------------------------------------------------------------------------------
+; Fecha: 04/2021
+;
+; Programador: Donis, Marina
+;
+; Descripción: TP1
+;-------------------------------------------------------------------------------
+
+;----------------------------- Archivos Include --------------------------------
+$bitdef.h       ; manejo de a bits 
+$ioAT89C52.h    ; incluye los registros del microcontrolador
+;-------------------------------------------------------------------------------
+
+;--- Se declara el programa ----------------------------------------------------
+         NAME    template ; nombre del archivo
+         PUBLIC  main ; me permite usar la palabra "main", define etiqueta
+;-------------------------------------------------------------------------------
+
+;---- Constantes ---------------------------------------------------------------
+   
+;Constantes para los segmentos
+SEG_CODIGO              EQU     0030h ; inicio seg codigo
+SEG_STACK               EQU     00C0h ; Segmento de stack
+
+LONG_STACK              EQU     10    ; Longitud en bytes del stack
+;-------------------------------------------------------------------------------
+
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; define el punto de inicio del Programa (code)
+           ASEG               ; define segmento absoluto
+           org 0000h          ; inicio del programa cuando se hace reset
+           ljmp    main       ; salto largo (incondicional) al main          
+           
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ; RSEG ISTACK:IDATA:NOROOT(0)
+            ASEG
+            org SEG_STACK
+stack_init  DS  LONG_STACK     ; Define el segmento de stack       
+; etiqueta stack_init, define un array de 10 posiciones (cte LONG_STACK 10)
+
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+       RSEG    IDATA_Z:DATA:NOROOT  
+       ; poner en donde se pueda (RSEG) en la memoria de datos
+
+;---SEGMENTO DE CÓDIGO----------------------------------------------------------
+         RSEG    RCODE
+         ORG     SEG_CODIGO     ; define el punto de inicio del Programa (code) 
+
+; Inicia el código principal
+main    ; etiqueta que llama al main
+        ; Inicializo el STACK
+        mov SP,#stack_init-1    ; inicializo el stack, SP = stack pointer     
+	
+        ; Inicializaciones
+   
+Loop_ppal:
+        CALL ejercicio1  ; ok
+        CALL ejercicio2  ; ok
+        CALL ejercicio3  ; ok
+        CALL ejercicio6  ; ok
+        CALL ejercicio7  ; ok
+        CALL ejercicio8  ; ok
+        CALL ejercicio9  ; ok
+        CALL ejercicio10 ; ok
+        CALL ejercicio12 ; ok
+
+salir:  jmp     Loop_ppal
+;--------fin del main-----------------------------------------------------------
+
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio1
+; Descripción:
+;       Realizar la siguiente operacion matematica: R3 = [ (R0 + 3Eh) + 1 ]
+;       Evaluar que ocurre si: R0 = C0h, R0 = C1h.
+;-------------------------------------------------------------------------------
+ejercicio1:
+        ;MOV R0, #0xC0 ; doy valor a R0
+        MOV R0, #0xC1  ; doy valor a R0
+        
+        MOV A, R0 ; guardo contenido de R0 en A
+        ADD A, #0x3E ; agrego 3E al contenido de A
+        ADD A, #1 ; sumo 1
+        ;INC A ; incremento en 1 A, no actualiza carry
+
+        MOV R3, A ; muevo el resultado a R3
+   
+   ret
+   
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio2
+; Descripción:
+;       Dividir un numero alojado en R1 por 8.
+;-------------------------------------------------------------------------------
+ejercicio2:
+        MOV R1, #8 ; doy valor para probar   
+        MOV A, R1 ; cargo el valor de R1 en A
+
+        ; dos formas: con DIV o por SHR (divide por 2)
+        MOV B, #8 ; cargo valor 8 en B
+
+        DIV AB
+
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio3
+; Descripción:
+;       Dividir mediante desplazamiento por 2.
+;-------------------------------------------------------------------------------
+ejercicio3:
+        MOV R1, #8 ; doy valor para probar
+        MOV A, R1
+        
+        RR A ; hace desplazamiento derecha
+        
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio6
+; Descripción:
+;       Aplicar f(x)=3x+7 siendo x un valor almacenado en el acumulador 
+;      (recuerde que el resultado sera en dos bytes).
+;-------------------------------------------------------------------------------
+ejercicio6:
+        MOV R3, #3     ; para multiplicar
+        MOV B, R3      ; para multiplicar
+        MOV R2, #7     ; para sumar ordenada al origen
+        MOV A, #1      ; le doy valor para probar
+
+        MUL AB         ; 3x
+        ADD A, R2      ; 3x + 7
+        
+        ; MUL guarda resultado en 2 bytes - A y B
+        MOV DPL, A     ; parte baja de mul -> DPL
+        MOV A,B        ; parte alta de mul -> A
+        ADDC A, #0x00  ; si hay carry por la parte baja lo sumo a la parte alta
+        MOV DPH, A     ; parte alta de mul + carry -> DPH
+        ; quedo el resultado en DPTR
+
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio7
+; Descripción:
+;       Sumar dos numeros de 16 bits, alojados en R4:R3 y R6:R5 
+;       (parte alta : parte baja), y guardar el resultado en el DPTR.
+;-------------------------------------------------------------------------------
+ejercicio7:
+        ; 1er byte doy valor para probar
+        MOV R3, #0xFF    ; parte baja de 1er byte 2815
+        MOV R4, #0x0A    ; parte alta de 1er byte 2815
+        
+        ; 2do byte doy valor para probar
+        MOV R5, #0x01    ; parte baja del 2do byte 1
+        MOV R6, #0x00    ; parte alta del 2do byte 1
+
+        ; sumo las dos partes bajas
+        MOV A, R3        ; parte baja del 1er byte 2815 -> A
+        ADD A, R5        ; parte baja 1er byte + parte baja 2do byte
+        
+        MOV DPL, A       ; resultado parte baja -> DPL
+        
+        ; sumo las dos partes altas
+        MOV A, R4        ; parte alta del 1er byte 2815 -> A
+        ADDC A, R6       ; parte alta 1er byte + alta 2do byte + carry
+        
+        MOV DPH, A
+                
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio8
+; Descripción:
+;       Usando como base el problema anterior sume los valores FEE7h a 001Ah 
+;       y almacenar el resultado en el DPTR.
+;-------------------------------------------------------------------------------
+ejercicio8:
+        ; 1er byte doy valor para probar
+        MOV R3, #0xE7    ; parte baja de 1er byte FEE7
+        MOV R4, #0xFE    ; parte alta de 1er byte FEE7
+        
+        ; 2do byte doy valor para probar
+        MOV R5, #0x1A    ; parte baja del 2do byte 001A
+        MOV R6, #0x00    ; parte alta del 2do byte 001A
+
+        ; sumo las dos partes bajas
+        MOV A, R3        ; parte baja del 1er byte 2815 -> A
+        ADD A, R5        ; parte baja 1er byte + parte baja 2do byte
+        
+        MOV DPL, A       ; resultado parte baja -> DPL
+        
+        ; sumo las dos partes altas
+        MOV A, R4        ; parte alta del 1er byte 2815 -> A
+        ADDC A, R6       ; parte alta 1er byte + alta 2do byte + carry
+        
+        MOV DPH, A
+
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio9
+; Descripción:
+;       El contenido del acumulador posee un valor numerico (0 a 9), 
+;       convertirlo al equivalente caracter segun el codigo ASCII 
+;       (Por ejemplo: si el valor es ACC = 03h, el resultado es el caracter '3')
+;-------------------------------------------------------------------------------
+ejercicio9:
+        MOV A, #3       ; doy valor para probar
+        
+        ADD A, #0x30    ; HEX 0 -> ASCII 30
+
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio10
+; Descripción:
+;       Representar el valor de un byte en sus caracteres ASCII equivalente, 
+;       guardar el resultado en DPTR. (Ejemplo: 34h debe convertirse a '3' '4').
+;-------------------------------------------------------------------------------
+ejercicio10:
+        MOV R1, #0x34      ; doy valor para probar
+        MOV A, R1          ; numero -> R1
+        
+        ; segundo num:
+        ; H | 0003 0004
+        ; B | 0011 0100
+        ; AND
+        ;     0000 1111
+        ;     ---------
+        ; B | 0000 0100 
+        ; H | 0000 0004 -> segundo numero
+
+        MOV B, #00001111B ; hago mascara para sacar ultimo num
+        
+        ANL A, B          ; me deja el 2do numero en A
+        ADD A, #0x30      ; HEX 0 -> ASCII 30
+        
+        MOV DPL, A        ; paso el 2do numero a DPL
+
+        ; primer num:
+        ; H | 0003 0004
+        ; B | 0011 0100
+        ; AND
+        ;     1111 0000
+        ;     ---------
+        ; B | 0011 0000 
+        ; H | 0003 0000 -> primer numero
+
+        MOV A, R1         ; num original -> A
+        
+        MOV B, #11110000B ; hago mascara para sacar primer num
+        
+        ANL A, B          ; me deja el 1er numero en A
+        ADD A, #0x30      ; HEX 0 -> ASCII 30
+        
+        MOV DPH, A        ; paso el 1er numero a DPH
+
+   ret
+
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio12
+; Descripción:
+;       Sumar el contenido de lo ingresado en P0 con el valor del puerto P1 y 
+;       guardarlo en el registro B.
+;-------------------------------------------------------------------------------
+ejercicio12:
+        MOV P0, #5       ; doy valor para probar
+        MOV P1, #6       ; doy valor para probar
+
+        MOV A, P0        ; num en P0 -> A
+        ADDC A, P1       ; P0 + P1 + carry      
+        MOV B, A         ; resultado -> B
+
+   ret
+
+;-------------------------------------------------------------------------------
+; FIN DEL ARCHIVO
+  END main   ; Cierra el archivo

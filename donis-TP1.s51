@@ -1,0 +1,150 @@
+;-------------------------------------------------------------------------------
+; Fecha: 04/2021
+;
+; Programador: Donis, Marina
+;
+; Descripción: TP1
+;-------------------------------------------------------------------------------
+
+;----------------------------- Archivos Include --------------------------------
+$bitdef.h       ; manejo de a bits 
+$ioAT89C52.h    ; incluye los registros del microcontrolador
+;-------------------------------------------------------------------------------
+
+;--- Se declara el programa ----------------------------------------------------
+         NAME    template ; nombre del archivo
+         PUBLIC  main ; me permite usar la palabra "main", define etiqueta
+;-------------------------------------------------------------------------------
+
+;---- Constantes ---------------------------------------------------------------
+   
+;Constantes para los segmentos
+SEG_CODIGO              EQU     0030h ; inicio seg codigo
+SEG_STACK               EQU     00C0h ; Segmento de stack
+
+LONG_STACK              EQU     10    ; Longitud en bytes del stack
+;-------------------------------------------------------------------------------
+
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; define el punto de inicio del Programa (code)
+           ASEG               ; define segmento absoluto
+           org 0000h          ; inicio del programa cuando se hace reset
+           ljmp    main       ; salto largo (incondicional) al main          
+           
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ; RSEG ISTACK:IDATA:NOROOT(0)
+            ASEG
+            org SEG_STACK
+stack_init  DS  LONG_STACK     ; Define el segmento de stack       
+; etiqueta stack_init, define un array de 10 posiciones (cte LONG_STACK 10)
+
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+       RSEG    IDATA_Z:DATA:NOROOT  
+       ; poner en donde se pueda (RSEG) en la memoria de datos
+
+;---SEGMENTO DE CÓDIGO----------------------------------------------------------
+         RSEG    RCODE
+         ORG     SEG_CODIGO     ; define el punto de inicio del Programa (code) 
+
+; Inicia el código principal
+main    ; etiqueta que llama al main
+        ; Inicializo el STACK
+        mov SP,#stack_init-1    ; inicializo el stack, SP = stack pointer     
+	
+        ; Inicializaciones
+   
+Loop_ppal:
+        CALL ejercicio5  ; ok
+        ;CALL ejercicio6  ; ok
+        CALL ejercicio14 ; ok
+
+salir:  jmp     Loop_ppal
+
+;--------fin del main-----------------------------------------------------------
+
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio5
+; Descripción:
+;       Dividir un numero alojado en R1 por 8.Implemente el problema en una 
+;       subrutina. Analice el comportamiento del microcontrolador cuando se 
+;       produce el llamado a la subrutina.
+;-------------------------------------------------------------------------------
+ejercicio5:
+        MOV R1, #9 ; doy valor para probar   
+        MOV A, R1  ; cargo el valor de R1 en A
+
+        ; dos formas: con DIV o por RR (divide por 2)
+        MOV B, #8  ; cargo valor 8 en B
+
+        DIV AB     ; divide el numero en A por el numero en B
+
+   ret
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio6
+; Descripción:
+;       Aplicar f(x)=3x+7 siendo x un valor almacenado en el acumulador 
+;      (recuerde que el resultado sera en dos bytes).
+;-------------------------------------------------------------------------------
+ejercicio6:
+        MOV R3, #3     ; 3 para multiplicar (3x)
+        MOV B, R3      ; cargo el valor para multiplicar
+
+        MOV R2, #7     ; para sumar ordenada al origen (+7)
+
+        ;MOV A, #1      ; le doy valor para probar
+        ; reutilizo subrutina en ej14, viene valor de x en A
+
+        MUL AB         ; 3x
+        ADD A, R2      ; 3x + 7
+        
+        ; MUL guarda resultado en 2 bytes - A y B
+        MOV DPL, A     ; parte baja de mul -> DPL
+        MOV A,B        ; parte alta de mul -> A
+        ADDC A, #0x00  ; si hay carry por la parte baja lo sumo a la parte alta
+        MOV DPH, A     ; parte alta de mul + carry -> DPH
+        ; queda el resultado en DPTR
+
+   ret
+
+;-------------------------------------------------------------------------------
+; Nombre: ejercicio14
+; Descripción:
+;       Aplicar la formula f(x)=3x+7 (ver el ejercicio 6) a las 10 posiciones 
+;       de RAM interna a partir de la 30h y colocar el resultado a partir de la 
+;       40h (recuerde que el resultado sera en dos bytes).
+;-------------------------------------------------------------------------------
+ejercicio14:
+        ; le doy valor a las entradas para probar
+        MOV 0x30, #0
+        MOV 0x31, #1
+        MOV 0x32, #2
+        MOV 0x33, #3
+        MOV 0x34, #4
+        MOV 0x35, #5
+        MOV 0x36, #6
+        MOV 0x37, #7
+        MOV 0x38, #8
+        MOV 0x39, #9
+
+        MOV R4, #10     ; le doy valor 10 al contador para repetir 10 veces
+        MOV R0, #0x30   ; cargo el puntero i con el inicio del bloque de entrada
+        MOV R1, #0x40   ; cargo el puntero j con el inicio del bloque de salida
+
+loop:   MOV A, @R0      ; cargo en A lo que apunta el puntero de entrada
+        INC R0          ; paso a la siguiente direccion de entrada
+        
+        CALL ejercicio6 ; aplico la funcion, resultado en DPTR
+        
+        MOV @R1, DPH    ; guardo la parte alta del resultado
+        INC R1          ; paso a la siguiente direccion (son 2 bytes)
+        MOV @R1, DPL   ; guardo la parte baja del resultado
+        INC R1          ; paso a la siguiente direccion
+        
+        DJNZ R4, loop   ; repite 10 veces (hasta que R4 = 0)
+        
+   ret
+   
+;-------------------------------------------------------------------------------
+; FIN DEL ARCHIVO
+  END main   ; Cierra el archivo

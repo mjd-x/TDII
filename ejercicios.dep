@@ -1,45 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project>
     <fileVersion>4</fileVersion>
-    <fileChecksum>107169240</fileChecksum>
+    <fileChecksum>509457216</fileChecksum>
     <configuration>
         <name>Debug</name>
         <outputs>
-            <file>$PROJ_DIR$\ej2.s51</file>
-            <file>$TOOLKIT_DIR$\inc\ioAT89C52.h</file>
-            <file>$TOOLKIT_DIR$\config\devices\_generic\lnk51ew_8052.xcl</file>
-            <file>$TOOLKIT_DIR$\inc\bitdef.h</file>
+            <file>$PROJ_DIR$\donis-TP1.s51</file>
+            <file>$PROJ_DIR$\Debug\Obj\donis-TP1.r51</file>
+            <file>$PROJ_DIR$\aaa.s51</file>
             <file>$PROJ_DIR$\main.s51</file>
-            <file>$PROJ_DIR$\Debug\Obj\template.r51</file>
-            <file>$PROJ_DIR$\Debug\Obj\ej2.r51</file>
-            <file>$PROJ_DIR$\..\template.s51</file>
+            <file>$TOOLKIT_DIR$\config\devices\_generic\lnk51ew_8052.xcl</file>
+            <file>$PROJ_DIR$\Debug\List\ejercicios.map</file>
+            <file>$TOOLKIT_DIR$\inc\bitdef.h</file>
+            <file>$TOOLKIT_DIR$\inc\ioAT89C52.h</file>
             <file>$PROJ_DIR$\Debug\Obj\main.r51</file>
-            <file>$PROJ_DIR$\Debug\Exe\ejemplo.d51</file>
-            <file>$PROJ_DIR$\Debug\List\ejemplo.map</file>
-            <file>$PROJ_DIR$\Debug\Obj\ej1.r51</file>
-            <file>$PROJ_DIR$\ej1.s51</file>
+            <file>$PROJ_DIR$\Debug\Exe\ejercicios.d51</file>
+            <file>$PROJ_DIR$\Debug\Obj\aaa.r51</file>
         </outputs>
         <file>
             <name>[ROOT_NODE]</name>
             <outputs>
                 <tool>
                     <name>XLINK</name>
-                    <file> 9 10</file>
+                    <file> 9 5</file>
                 </tool>
             </outputs>
         </file>
         <file>
-            <name>$PROJ_DIR$\ej2.s51</name>
+            <name>$PROJ_DIR$\donis-TP1.s51</name>
             <outputs>
                 <tool>
                     <name>A8051</name>
-                    <file> 6</file>
+                    <file> 1</file>
                 </tool>
             </outputs>
             <inputs>
                 <tool>
                     <name>A8051</name>
-                    <file> 3 1</file>
+                    <file> 6 7</file>
+                </tool>
+            </inputs>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\aaa.s51</name>
+            <outputs>
+                <tool>
+                    <name>A8051</name>
+                    <file> 10</file>
+                </tool>
+            </outputs>
+            <inputs>
+                <tool>
+                    <name>A8051</name>
+                    <file> 6 7</file>
                 </tool>
             </inputs>
         </file>
@@ -54,52 +67,22 @@
             <inputs>
                 <tool>
                     <name>A8051</name>
-                    <file> 3 1</file>
+                    <file> 6 7</file>
                 </tool>
             </inputs>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\template.s51</name>
+            <name>$PROJ_DIR$\Debug\Exe\ejercicios.d51</name>
             <outputs>
                 <tool>
-                    <name>A8051</name>
+                    <name>XLINK</name>
                     <file> 5</file>
                 </tool>
             </outputs>
             <inputs>
                 <tool>
-                    <name>A8051</name>
-                    <file> 3 1</file>
-                </tool>
-            </inputs>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\Debug\Exe\ejemplo.d51</name>
-            <outputs>
-                <tool>
                     <name>XLINK</name>
-                    <file> 10</file>
-                </tool>
-            </outputs>
-            <inputs>
-                <tool>
-                    <name>XLINK</name>
-                    <file> 2 6</file>
-                </tool>
-            </inputs>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\ej1.s51</name>
-            <outputs>
-                <tool>
-                    <name>A8051</name>
-                    <file> 11</file>
-                </tool>
-            </outputs>
-            <inputs>
-                <tool>
-                    <name>A8051</name>
-                    <file> 3 1</file>
+                    <file> 4 1</file>
                 </tool>
             </inputs>
         </file>

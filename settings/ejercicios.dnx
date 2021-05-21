@@ -1,15 +1,11 @@
 <?xml version="1.0"?>
 <settings>
     <DebugChecksum>
-        <Checksum>578895307</Checksum>
+        <Checksum>3595040804</Checksum>
     </DebugChecksum>
     <CodeCoverage>
         <Enabled>_ 0</Enabled>
     </CodeCoverage>
-    <Registers>
-        <regBase0>A 10</regBase0>
-        <regBase1>R3 10</regBase1>
-    </Registers>
     <Stack>
         <FillEnabled>0</FillEnabled>
         <OverflowWarningsEnabled>1</OverflowWarningsEnabled>
@@ -28,6 +24,14 @@
     <CallStack>
         <ShowArgs>0</ShowArgs>
     </CallStack>
+    <Registers>
+        <regBase0>A 10</regBase0>
+        <regBase1>R4 10</regBase1>
+        <regBase2>DPTR 10</regBase2>
+        <regBase3>R2 10</regBase3>
+        <regBase4>R3 10</regBase4>
+        <regBase5>B 10</regBase5>
+    </Registers>
     <DriverProfiling>
         <Enabled>0</Enabled>
         <Mode>1</Mode>

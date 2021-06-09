@@ -1,0 +1,126 @@
+;-------------------------------------------------------------------------------
+; Fecha: //2021
+;
+; Programador: Donis, Marina
+;
+; Descripción:
+;
+; Modificaciones:
+;
+;-------------------------------------------------------------------------------
+
+;----------------------------- Archivos Include --------------------------------
+$bitdef.h       ; manejo de a bits 
+$ioAT89C52.h    ; incluye los registros del microcontrolador
+;-------------------------------------------------------------------------------
+
+;--- Se declara el programa ----------------------------------------------------
+         NAME    template ; nombre del archivo
+         PUBLIC  main ; me permite usar la palabra "main", define etiqueta
+;-------------------------------------------------------------------------------
+         
+;---- Prototipos de ISRs -------------------------------------------------------
+   PUBLIC myISR           ; declaro el prototipo de la servicio de atención de Interrupciones.
+;-------------------------------------------------------------------------------
+
+;---- Prototipos de subrutinas -------------------------------------------------
+   PUBLIC MiSubrutina            ; declaro el prototipo de la subrutina, etiqueta
+;-------------------------------------------------------------------------------
+
+;---- Constantes ---------------------------------------------------------------
+MI_CONSTANTE     EQU   4              ; Se define la constante en decimal
+CONSTANTE_BIN    EQU   b'00001000     ; define constante en binario
+CONSTANTE_HEX    EQU   0x45           ; define constante en hexadecimal
+CONSTANTE_HEX_2  EQU   0045h          ; otra forma definir cte en hexa 
+   
+;Constantes para los segmentos
+SEG_CODIGO              EQU     0030h ; inicio seg codigo
+SEG_STACK               EQU     00C0h ; Segmento de stack
+
+LONG_STACK              EQU     10    ; Longitud en bytes del stack
+;-------------------------------------------------------------------------------
+
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; define el punto de inicio del Programa (code)
+           ASEG               ; define segmento absoluto
+           org 0000h          ; inicio del programa cuando se hace reset
+           ljmp    main       ; salto largo (incondicional) al main
+                       
+           
+           ; INT TIMER0 vector 
+           ASEG
+           org 000BH           ; Definir el vector de interrupción para el timer
+           ljmp myISR          ; Definir el el salto a la ISR
+           
+           
+           
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ; RSEG ISTACK:IDATA:NOROOT(0)
+            ASEG
+            org SEG_STACK
+stack_init  DS  LONG_STACK     ; Define el segmento de stack       
+; etiqueta stack_init, define un array de 10 posiciones (cte LONG_STACK 10)
+
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+       RSEG    IDATA_Z:DATA:NOROOT  
+       ; poner en donde se pueda (RSEG) en la memoria de datos
+
+my_variable    ds    1                    ; variable interna para uso del código
+
+Tabla2Pow      db      1,2,4,8,16,32,64   ; forma de definir tabla en RAM.
+
+;---SEGMENTO DE CÓDIGO----------------------------------------------------------
+         RSEG    RCODE
+         ORG     SEG_CODIGO     ; define el punto de inicio del Programa (code) 
+
+; Inicia el código principal
+main    ; etiqueta que llama al main
+        ; Inicializo el STACK
+        mov SP,#stack_init-1    ; inicializo el stack, SP = stack pointer     
+	
+        ; Inicializaciones
+   
+Loop_ppal:              
+          
+        call MiSubrutina
+        ; hago lo que corresponde.
+          
+salir:  jmp     Loop_ppal
+;--------fin del main-----------------------------------------------------------
+
+;-------Subrutinas--------------------------------------------------------------
+        RSEG NEAR_CODE:CODE:NOROOT(0)
+        ; inicializacion de espacio de codigo para las subrutinas, relocalizable
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: MiSubrutina
+; Parametros:ninguno
+; Devuelve: nada
+; Modifica:
+;       ????
+; Nivel de Stack: ?
+; Descripción:
+;       Descripción de funcionamiento de la subrutina.
+;-------------------------------------------------------------------------------
+MiSubrutina:
+
+   ret
+
+;===ISRs========================================================================
+;-------------------------------------------------------------------------------
+; Nombre: myISR
+; Parametros:ninguno
+; Devuelve:nada
+; Modifica:
+;       xxxxx
+; Nivel de Stack:
+;
+; Descripción:
+;       Rutina de servicio de interrupción del <periférico x>
+;-------------------------------------------------------------------------------  
+ myISR:
+ 
+   reti
+
+; FIN DEL ARCHIVO
+  END main   ; Cierra el archivo

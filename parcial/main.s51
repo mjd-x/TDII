@@ -1,0 +1,84 @@
+$bitdef.h
+$ioAT89C52.h
+        
+        NAME    Parcial
+
+        PUBLIC  main
+
+        ORG     0FFFEh
+        DC16    main
+        RSEG    RCODE
+        ljmp main
+alto:
+        DB      1
+        DB      2
+        DB      3
+        DB      4
+        DB      5
+        DB      6
+        DB      7
+        DB      8
+        DB      9
+        DB      0FFH
+ancho:
+        DB      1
+        DB      2
+        DB      3
+        DB      4
+        DB      5
+        DB      6
+        DB      7
+        DB      8
+        DB      9
+        DB      0FFH     
+        
+superficie:                     
+          DB      0x40
+          DB      0x41
+          DB      0x42
+          DB      0x43
+          DB      0x44
+          DB      0x45
+          DB      0x46
+          DB      0x47
+          DB      0x48
+          DB      0x49
+          DB      0x50
+          DB      0x51
+          DB      0x52
+          DB      0x53
+          DB      0x54
+          DB      0x55
+          DB      0x56
+          DB      0x57
+          DB      0x58
+          DB      0x59
+     
+        
+main    NOP
+        mov R2, #10D            ;Repito 10 veces (tamaño de la tabla alto y ancho)
+        mov R3, #0D             ;Voy incrementando, lo uso para buscar en las tablas
+        mov R1, #40H            ;Guardo a partir de esta posicion
+
+
+        NOP
+buscar:
+        mov A,R3
+        mov DPTR,#alto
+        movc A,@A+DPTR          ;Busco en alto
+        mov B,A
+        mov A,R3
+        mov DPTR,#ancho         ;Busco en ancho
+        movc A,@A+DPTR
+        mul AB                  ;multiplico
+        mov @R1, B              ;Guardo la parte mas significativa en el primer byte
+        inc R1
+        mov @R1, A              ;Guardo la parte menos significativa en el segundo byte
+        inc R1
+        inc R3
+        djnz R2, buscar         ;Si no llego a cero, vulvo a buscar datos para seguir con los segundos de la tabla
+        NOP
+        END     main            ;Los resultados se iran guardando a partir de 40H
+
+        
+        

@@ -1,0 +1,52 @@
+workspace = ventana en donde vamos a tener todo el entorno
+puedo tener varios proyectos en un workspace
+
+project -> create new project -> generic project template -> assembler project -> ok
+
+compilar = ctrl + F7
+make = solo compila los que cambiaron
+
+EQU = para definir constantes, es una directiva del compilador (es para el compilador y se resuelve en tiempo de compilacion, NO de ejecucion, NO para la CPU, no usa recursos de la CPU)
+
+ASEG = directiva del compilador, la direccion que pongo es una direccion absoluta (es tomando todo el espectro de la memoria de programa)
+
+RSEG = direccion no absoluta, que lo ponga en la memo de datos "en donde entre"
+
+DS = directiva del compilador para definir algun tipo de variable
+
+como definir una variable:
+
+mi_variable DS 1 -> define variable "mi_variable" de 1 byte
+
+variable_inicializada DB 1,2,4,5 -> define variable inicializada "variable_inicializada" con valores 1,2,3,4,5
+
+hay 2 memorias en el micro, cuando hago un programa y compilo va a parar a la memoria de codigo (el ejecutable). Para esto pongo constantes para los segmentos (indico en donde empieza el codigo). Como me doy cuenta en donde esta cada parte: me importa si se pierde el dato cuando apago el micro? es dinamico, para el programa? si no importa va a datos
+
+cuando hay interrupcion el codigo en curso para y se direcciona a otra parte (vector de interrupcion donde cada casillero tiene asignado una dir de memo, y dependiendo de que interr fue va a esa direccion)
+
+stack = donde se van guardando las direcciones a las que tengo que volver cuando llamo a subrutina/bifurcacion (donde guardo puntos de retorno). Pila con puntero (SP)
+. El puntero del stack primero se incrementa en 1 y guarda. por eso SP en (stack_init - 1). El # es para guardar de forma inmediata. Si lo saco lo toma como una direccion de memoria
+por ej
+ADD A,#2 -> agregar al acumulador 2 (numero)
+ADD A,2 -> agreggar al acumulador LO QUE HAYA en la DIRECCION 2
+
+Ver registros: view -> registers
+se puede cambiar base con click der sobre registro -> format -> (base)
+
+
+
+
+
+
+
+
+
+dph, dpl??? dptr=data pointer, registro puntero a una parte de la memoria de datos
+los saltos son un salto, no guardo en SP el punto de retorno. El jump una vez ue salte ya esta, no se de donde vengo
+por cada desplazameitno logico a la derecha se divide por 2
+SHL multiplica por 2.
+Operaciones de * / con desplazamientos porque antes le sacaba costo a nivel HW ya que se utilizaba menos espacio de semiconductor al no tener que implentar las operaciones. ADemas DIV usa mas ciclos de reloj (4, mas lento) que con shift. Pero shift no guarda el resto.
+en ej 3 se puede comparar la cant de instruccione que me lleva hacer el desplazamiento y dividir directo (entre 4 ya no se ahorra tanto tiempo como dividiendo con 2)
+
+ejs: 1,2,3,5,6,7,8,9,10,12
+el ejercicio de la ecuacion se puede sesolver usando lo de los arrays clase 27042021

@@ -1,0 +1,110 @@
+;-------------------------------------------------------------------------------
+; Fecha: 31/05/2015
+;
+; Programador: Ariel Dalmas Di Giovanni 
+;
+; Descripción: Un trabajador llega al pusto de trabajo y activa el sistema,
+; una vez que inicia desde 0 hasta 10 autos. luz verde puede entrar, luz roja ocupado
+;sensor a la entrada y otro a la salida
+;el conteo se habilita desde la cabina del empleado
+;-------------------------------------------------------------------------------
+
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        ;--- ISRs ---
+        PUBLIC  Isr_Tmr0
+        PUBLIC  Isr_Tmr1
+        ;--- Declaro públicas las subrutinas ---
+        PUBLIC  InitPerif_Interrupciones
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00            ; prioridad baja
+INT_HABILITADAS EQU     b'10000110     ;habilitación de timer 1
+
+  ;Para TIMERs
+TMOD_INICIAL    EQU     b'00000110    ;Registro de modo de timers
+                                                                           
+TCON_INICIAL    EQU     b'00010100    ;Registro de control de timers, tmr0 y tmr1 ON
+
+RECARGA_TL0            EQU     0xF6 ;(0xFFFF-VALOR_TIMER+CICLOS_TMR0_DETENIDO)       ;Valor de recarga del timer
+RECARGA_TH0            EQU     0x00		; Cuenta de Recarga del Timer 1
+
+;Puerto I/O
+led_verde               EQU     P0.0    ;led rojo
+led_rojo                EQU     P0.1    ;led verde
+
+;--------------------------------------
+            org 0000h   ;RESET
+            ljmp    main        ;Salto a main
+                      
+           ;INT TIMER0 vector
+           
+           org 000BH                    ;Definir el vector de interrupción
+           ljmp Isr_Tmr0                ; Definir el el salto a la ISR
+           ;INT TIMER1 Vector
+          
+           org  0013H                   ;(1°) Defino el vector de Interrupción
+           ljmp Isr_Tmr1               ;(2°) Defino el salto a la Isr.
+           
+
+           org 0030h
+
+main    
+
+;**Inicializaciones
+        ;Inicializo Interrupciones
+        call InitPerif_Interrupciones        
+        
+        ;Inicializo variables
+        setb    led_verde
+        clr     led_rojo
+        mov TL0, #0xFF
+        INC TL0
+;**Inicio loop principal
+Loop_ppal:      
+          NOP
+          jmp     Loop_ppal
+        
+;===========SUBRUTINAS==========================================================
+InitPerif_Interrupciones:
+        ;Para el timer 0
+        mov     TL0,RECARGA_TL0         ; Recargo la parte baja del Timer 0
+	mov	TH0,RECARGA_TH0 	; Recargo la parte alta del Timer 0
+	
+        mov     TMOD, #TMOD_INICIAL		; Inicializo Timer/Counter Mode Register
+	mov     TCON, #TCON_INICIAL		; Inicializo Timer/Counter Control Register
+            
+	;(3°) Seleccionar la prioridad de las interrupciones
+        mov     IP,#INT_PRIORIDAD        ;Prioridad baja para todos   
+        
+        ;(4°) Habilitar interrupción, es lo último a hacer antes de entrar al lazo ppal.
+        mov     IE,#INT_HABILITADAS      ;Habilito las interrupciones según la cte
+
+      ret
+
+;===ISRs========================================================================
+
+ Isr_Tmr0:
+
+      clr       led_verde
+      setb      led_rojo   
+
+      reti
+
+;TImer 1
+Isr_Tmr1:
+      mov       A,TL0
+      DEC       A
+      mov       TL0,A
+      cjne      A,#0FFH,salir2
+      setb      led_verde
+      clr       led_rojo      
+      
+salir2:    
+      reti
+
+;===============================================================================
+  END     main
+

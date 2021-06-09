@@ -1,0 +1,76 @@
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        PUBLIC  Isr
+        PUBLIC  Interrupciones
+
+        PUBLIC  main
+
+        ORG     00b8h
+        DC16    main
+IP_Prioridad       EQU     0x00            ;prioridad baja
+IE_Interrupciones  EQU     b'10000001
+TMOD_INICIAL       EQU    b'00000000    ;Registro de modo de timers
+TCON_INICIAL       EQU    b'00000001    ; pongo la llave en 1 para que actue por flanco
+algo_encender     EQU     P2.0    ;salida al llegar a una hora determinada
+        ASEG
+        org 0000h
+        ljmp    main
+        ASEG
+        org  0003H 
+        ljmp Isr 
+        
+        ;En memoria 
+horas           ds 1
+minutos         ds 1
+segundos        ds 1
+
+        
+main
+        call  Interrupciones 
+        mov segundos,#0xA0         ;inicializo
+        mov minutos, #0xB0
+        mov horas, #0xC0
+        
+loop_ppal    NOP
+             jmp loop_ppal
+
+Isr:
+      mov A, segundos
+      cjne A, #59d, incrementar
+      mov A,segundos
+      mov segundos,#00
+      INC minutos
+      mov A, minutos
+      cjne A, #59d, activar
+      mov minutos, #00
+      INC horas
+      mov A, horas
+      cjne A, #23d, activar
+      mov horas, #00
+      jmp activar      
+incrementar:
+      INC segundos
+      
+activar:
+      mov A,horas
+      cjne A,#2d, salir
+      mov A,minutos
+      cjne A,#7d, salir
+      mov A,segundos
+      cjne A,#23d, salir
+      setb  algo_encender    
+
+salir:
+      reti
+
+Interrupciones:
+        mov     TMOD, #TMOD_INICIAL		
+	mov     TCON, #TCON_INICIAL
+        mov     IP,#IP_Prioridad 
+        mov     IE,#IE_Interrupciones 
+        ret
+
+  END     main

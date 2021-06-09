@@ -1,0 +1,152 @@
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+        NAME    main
+        PUBLIC  main
+        PUBLIC  Isr_Serie
+        PUBLIC  InitPerif_Interrupciones
+        PUBLIC  Recibo
+        PUBLIC  Envio
+        ;Constantes de segmentos
+SEG_CODIGO      EQU     0030h    ; inicio seg codigo
+
+;Para interrupciones
+INT_PRIORIDAD   EQU     0x00            ;prioridad baja
+IE_HABILITADAS  EQU     b'10010000     ;habilitación serie y general
+
+  ;Para TIMERs
+TMOD_INICIAL    EQU     b'00100000    ;Registro de modo de Timer, pongo modo 2 el timer 1                                                                    
+TCON_INICIAL    EQU     b'01000000    ;Registro de control de timers, tmr1 ON
+
+  ;TIMER 1
+RECARGA_TMR1   EQU     0xFD ; Cuenta de Recarga del Timer 1 para 9600 baudios
+
+  ;UART
+SCON_INICIAL   EQU     b'01010000      ;Modo 1 (SM0=0;SM1=1) y Recepción habilitada
+
+;Puerto I/O
+RX_SERIE_I     EQU     P3.0    ;entrada de recepción serie
+TX_SERIE_O     EQU     P3.1    ;Salida de transmisión serie.
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ASEG
+           org 0000h
+           ljmp    main
+    
+           ASEG
+           org  0023H            ;(1°) Defino el vector de Interrupción Serie
+           ljmp Isr_Serie        ;(2°) Defino el salto a la Isr_Serie.
+
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+       ;Inicia el código
+           ASEG
+           ORG 0026h
+dato_rx         ds    1         ;letra recibido del puerto serie, se carga en ISR
+hay_dato_rx     ds    1         ;flag de que hay un dato recibido canal serie. En '1', hay dato, en '0', no hay dato . RI
+dato_tx_end     ds    1         ;señala que el canal serie ya terminó de transmitir, estado '1'. En cero '0' canal ocupado. TI
+bandera         ds    1
+
+
+        ORG     SEG_CODIGO       ;define el punto de inicio del Programa (0030H)
+tabla           ds    200 
+
+;-------------------------------------------------------------------------------
+        RSEG    RCODE
+main    
+;**Inicializaciones
+        ;Inicializo Interrupciones
+        call InitPerif_Interrupciones
+        setb    RX_SERIE_I        ;aseguro puerto de recepción serie como entrada
+        setb    TX_SERIE_O        ;aseguro puerto de transmision serie como salida
+        
+        ;Inicializo variables
+        mov     hay_dato_rx,#0x01        ;No hay nada en SBUF --> RI=0
+        mov     dato_tx_end,#0x01
+        mov     R0,#tabla
+        
+Loop_ppal:
+        call    Recibo
+        mov     A, bandera
+        cjne    A,#1, Loop_ppal
+        mov     R0,#tabla
+envio:
+        call    Envio
+        mov     A, bandera
+        cjne    A,#0, envio
+        jmp     Loop_ppal
+;fin del loop principal
+;------------------------------------------------------------------------------
+Recibo:
+        push    PSW
+        mov     A,hay_dato_rx
+        mov     hay_dato_rx,#0x00       ;limpio el flag
+        cjne    A,#1,Salir              ;Tengo algo sigo, sino salgo
+        ;mov     @R0, dato_rx
+        mov     @R0, #50D        ;PARA DEBUG!!!
+        INC     R0
+        ;mov     A, dato_rx
+        mov     A, #23H         ;PARA DEBUG!!!!!
+        cjne    A,#23H, Salir
+        mov     bandera, #1                     ;quiere decir que termino de llegar todo
+  
+Salir:
+        pop     PSW
+        ret
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+
+Envio:
+        push    PSW
+        mov     A,dato_tx_end
+        mov     dato_tx_end,#0x00       ;limpio el flag
+        cjne    A,#0x01,salir2
+        ;si es igual envío otro dato
+        mov     A,@R0
+        cjne    A,#23H, envio_y_salgo
+        mov     bandera, #0             ;Quiere decir que estoy enviando el ultimo '#'
+        mov     SBUF, A
+        jmp     salir2
+envio_y_salgo:
+        mov     SBUF, A
+        inc     R0
+        
+salir2: 
+        pop     PSW
+        ret
+
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+        ;Cargo las constantes que defini arriba
+        ;Para el timer 1
+        mov     TL1, #RECARGA_TMR1	; Recargo la parte baja del Timer 1
+        mov	TH1, #RECARGA_TMR1 	; Recargo la parte alta del Timer 1
+
+        mov     TMOD, #TMOD_INICIAL	; Inicializo Timer/Counter Mode Register
+        mov     TCON, #TCON_INICIAL	; Inicializo Timer/Counter Control Register
+        mov     SCON,#SCON_INICIAL      ;Inicializo puerto serie
+        mov     IP,#INT_PRIORIDAD       ;Prioridad baja para todos   
+        mov     IE,#IE_HABILITADAS      ;Habilito las interrupciones según la cte
+
+        ret
+      
+;-------------------------------------------------------------------------------  
+Isr_Serie:
+        push PSW
+Que_fue:
+        jnb SCON_RI, Es_transmision
+Es_recepcion:
+        cpl SCON_RI
+        mov dato_rx, SBUF
+        mov hay_dato_rx, #01H
+        jmp Salir_serie
+        
+Es_transmision:
+        jnb SCON_TI, Salir_serie
+        cpl SCON_TI
+        mov dato_tx_end, #01H
+
+Salir_serie:
+        pop PSW
+        reti
+ 
+;===============================================================================    
+
+      END     main

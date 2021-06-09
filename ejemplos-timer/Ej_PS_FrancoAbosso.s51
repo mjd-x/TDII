@@ -1,0 +1,102 @@
+; includes
+$bitdef.h                
+$ioAT89C52.h 
+
+NAME		main
+PUBLIC		main
+
+PUBLIC		config
+PUBLIC		convertir
+PUBLIC		int_ps
+
+  ; Inicio del segmento de stack.
+SEG_STACK               EQU     73h
+  ; Tamaño del stack (bytes).
+LONG_STACK              EQU     10
+
+			ASEG
+			ORG		0000h
+			LJMP	main
+
+			ASEG
+			ORG     0023h
+			LJMP	int_ps
+
+            ASEG
+            ORG      SEG_STACK
+stack_init  DS       LONG_STACK
+
+
+; bits
+SC 			EQU 	00
+; bytes
+bytesCant	EQU		7Eh
+cont 		EQU		7Fh
+
+
+
+main:
+	CALL	config
+	loop:
+		JNB  SC, loop
+			CLR		SC
+			MOV		cont, 70h
+			CALL	convertir
+	JMP		loop
+
+config:
+	MOV		cont, 30h
+	MOV		IP, 00000000b
+	MOV		SCON, 10010000b
+	MOV		PCON, 10000000b
+	MOV		TL1, FDh
+	MOV		TH1, FDh
+	MOV		TMOD, 00100000b
+	MOV		IE, 10010000b
+	MOV		TCON, 01000000b
+
+	MOV		SP, #stack_init-1
+	RET
+
+convertir:
+	MOV		A, bytesCant
+	MOV		B, #100
+	DIV		AB
+	MOV		70h, A
+	MOV		A, B
+	MOV		B, #10
+	DIV		AB
+	MOV		71h, A
+	MOV		72h, B
+	RET
+
+int_ps:
+	PUSH	A
+	JNB		RI, transmitio
+	; recibio:
+		CLR		RI
+		MOV		A, SBUF
+		CJNE	A, #35, valido
+		; numeral:
+			MOV		A, cont
+			ADD		A, #E2h
+			JMP		finish_ps
+		valido:
+			MOV		cont, SBUF
+			INC		cont
+	JMP		finish_ps
+	transmitio:
+		CLR		TI
+		MOV		A, cont
+		CJNE	A, #73h, continue_tx
+		; finish_tx
+			JMP		finish_ps
+		continue_tx:
+			MOV	  SBUF, cont
+			INC   cont
+	finish_ps:
+	POP		A
+	RETI
+
+
+END		main

@@ -1,0 +1,209 @@
+;-------------------------------------------------------------------------------
+; Fecha: 13/05/2015
+;
+; Programador: Ariel Dalmas Di Giovanni 
+;
+; Descripción: Implementación del Timer en modo 1 mediante interrupciones.
+
+; Modificaciones:
+;
+;-------------------------------------------------------------------------------
+
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        
+        
+        ;--ISRs
+        PUBLIC  Isr_Tmr0
+        ;--Declaro públicas las subrutinas
+        PUBLIC  InitPerif_Interrupciones
+
+;---CONSTANTES------------------------------------------------------------------
+
+  ;Registros generales
+CTE_SUMA        EQU     0x3E        ;Número cte para operar
+LONG_BUFFER     EQU     10          ;Longitud del buffer
+ADDR_INICIAL    EQU     0x40        ;Dirección de memoria inicial
+
+  ;Constantes para los segmentos
+SEG_CODIGO     EQU     0030h    ;inicio seg codigo
+SEG_DATOS1     EQU     0020h    ;seg datos     
+SEG_CONST      EQU     0090h    ;Constantes en rom
+SEG_STACK      EQU     00C0h    ;Segmento de stack
+
+LONG_STACK     EQU     10     ;Longitud en bytes del stack
+
+  ;Constantes de reloj
+FRECUENCIA_CLOCK        EQU     12000        ;Frecuencia de clock externa, kHz
+DIV_CLOCK_INT           EQU     12              ;Divisor interno
+FREC_PERIF              EQU     (FRECUENCIA_CLOCK/DIV_CLOCK_INT)     ;Frecuencia recibida por los periféricos
+  
+
+
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00    ;prioridad baja
+INT_HABILITADAS EQU     b'10000011     ;habilitación general, externa y de timer cuadro de registro IE
+
+  ;Para TIMERs
+TMOD_INICIAL    EQU     b'00000001    ;Registro de modo de timers
+                                      ;No uso el timer 1
+                                      ;modo 1 timer 0, con uso del Fosc, GATE=0, C/T=0, modo (0,1)
+                                      
+TCON_INICIAL    EQU     b'00010000    ;Registro de control de timers, tmr0 ON
+                                      ;Tiene habilitado TR0, este mas el GATE en 0 hace que se cierre la llave de control
+  ;TIMER 0
+TICK_TMR0               EQU     1       ;Período del tick en ms
+VALOR_TIMER             EQU     (FREC_PERIF*TICK_TMR0)  ;Valor del timer
+CICLOS_TMR0_DETENIDO    EQU     7       ;Tiempo que permanece detenido en la ISR el Timer 0.
+RECARGA_TMR0            EQU     (0xFFFF-VALOR_TIMER+CICLOS_TMR0_DETENIDO)      ;Valor de recarga del timer
+;-------------------------------------------------------------------------------
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; Direct the reset vector to the program entry label. 
+           ;asegn   INTVEC:CODE, 0x0000
+            ASEG
+            org 0000h
+            ljmp    main
+                       
+           
+           ;INT TIMER0 vector
+           ASEG
+           org 000BH                     ;(1°) Definir el vector de interrupción
+           ljmp Isr_Tmr0                 ;(2°) Definir el el salto a la ISR
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ;RSEG ISTACK:IDATA:NOROOT(0)
+            aseg
+            org 00b8h
+stack_init  DS          LONG_STACK             ;Define el segmento de stack       
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+
+;:::Segmento relocalizable::::::::::::::
+;       RSEG    IDATA_Z:DATA:NOROOT  
+;::::::::::::::::::::::::::::::::::::::
+;::Segmento absoluto:::::::::::::::::::::
+        ASEG    
+        ORG     SEG_DATOS1
+;::::::::::::::::::::::::::::::::::::::
+
+var_bit        ds       1     
+
+;ESPACIO de BUFFER
+buffer  ds      LONG_BUFFER
+
+;TABLA RAM
+        RSEG    IDATA_Z:DATA:NOROOT  
+Tabla2Pow      db      1,2,4,8,16,32,64
+
+       
+;-------------------------------------------------------------------------------
+;Inicia el código
+        
+        ;RSEG    NEAR_CODE:CODE:ROOT            ;defino un segmento de código
+        RSEG    RCODE
+        ORG     SEG_CODIGO                      ;define el punto de inicio del Programa (code) 
+main    
+
+;**Inicializaciones
+        ;Inicializo el STACK
+        mov SP,#stack_init-1                      ;inicializo el stack
+        
+        ;Inicializo Interrupciones
+        call InitPerif_Interrupciones
+                
+;**Inicio loop principal    
+Loop_ppal:      
+          ;por ahora no hace nada
+salir:  jmp     salir
+
+;-------Subrutinas--------------------------------------------------------------
+        RSEG NEAR_CODE:CODE:NOROOT(0)
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+; Parametros:ninguno
+; Devuelve:nada
+; Modifica:
+;       IP, IE, TCON, TMOD,TH0,TL0
+; Nivel de Stack: 2
+;
+; Descripción:
+;       Inicializa las interrupciones y algunos periféricos como el timer
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+        ;Para el timer
+        mov     TL0, #LOW(RECARGA_TMR0)	; Recargo la parte baja del Timer 0
+	mov	TH0, #HIGH(RECARGA_TMR0) 	; Recargo la parte alta del Timer 0
+
+	mov     TMOD, #TMOD_INICIAL		; Inicializo Timer/Counter Mode Register
+	mov     TCON, #TCON_INICIAL		; Inicializo Timer/Counter Control Register
+        
+        
+
+	;(3°) Seleccionar la prioridad de las interrupciones
+        mov     IP,#INT_PRIORIDAD        ;Prioridad baja para todos, todos en 0
+        
+        ;(4°) Habilitar interrupción, es lo último a hacer antes de entrar al lazo ppal.
+        mov     IE,#INT_HABILITADAS      ;Habilito las interrupciones según la cte 10000011 se habilita todo, int0 y tf0
+
+      ret
+
+;-------------------------------------------------------------------------------
+;===ISRs========================================================================
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Tmr0
+; Parametros:ninguno
+; Devuelve:nada
+; Modifica:
+;       xxxxx
+; Nivel de Stack:2
+;
+; Descripción:
+;       Rutina de servicio de interrupción del timer
+;-------------------------------------------------------------------------------  
+ Isr_Tmr0:
+      push	PSW				; Resguardo registros modificados por esta subrutina
+      push	A
+
+      clr       IE_EA                            ;EA, Deshabitito las Interrupciones
+      clr	TCON_TR0			;Detengo la cuenta del Timer 0
+
+      mov	a, # LOW (RECARGA_TMR0)	        ; Recupero el valor la parte baja de Recarga del Timer 0
+      add	a, TL0				; Le sumo lo acumulado en la parte baja del Timer 0 desde 
+                                                ; que se produjo la Interrupción
+      mov	TL0,a				; Recargo la parte baja del Timer 0
+
+      mov	a, # HIGH (RECARGA_TMR0)	; Recupero el valor la parte alta de Recarga del Timer 0
+      addc	a, TH0				; Le sumo lo acumulado en la parte alta del Timer 0 desde 
+                                                ; que se produjo la Interrupción
+      mov	TH0,a				; Recargo la parte alta del Timer 0
+
+      setb	TCON_TR0				; Arranco la cuenta del Timer 0
+      setb	IE_EA				; Habitito las Interrupciones
+
+      ;-------------------------------------------------------------------------
+      ;Acá se realiza lo pertinente a la rutina de Interrupción
+      ;-------------------------------------------------------------------------
+      pop	A				; Recupero registros previamente resguardados
+      pop	PSW
+
+      reti
+
+
+ 
+;===============================================================================
+  END     main
+
+;-------------------------------------------------------------------------------
+; Nombre: 
+; Parametros:
+; Devuelve:
+; Modifica:
+; Nivel de Stack:
+;
+; Descripción:
+;-------------------------------------------------------------------------------
+

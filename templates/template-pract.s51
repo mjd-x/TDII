@@ -1,0 +1,268 @@
+;-------------------------------------------------------------------------------
+; Fecha: 00/00/2021
+;
+; Programador: Marina Donis
+;
+; Descripcion: Implementacion del Timer 0 en modo 1 mediante interrupciones.
+;-------------------------------------------------------------------------------
+
+$bitdef.h       ; manejo de a bits 
+$ioAT89C52.h    ; incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        
+        ;--ISRs
+        PUBLIC  Isr_Tmr0
+        ;--Declaro publicas las subrutinas
+        PUBLIC  InitPerif_Interrupciones
+
+;---CONSTANTES------------------------------------------------------------------
+
+  ;Registros generales
+CTE_SUMA        EQU     0x3E        ; Numero cte para operar
+LONG_BUFFER     EQU     10          ; Longitud del buffer
+ADDR_INICIAL    EQU     0x40        ; Direccion de memoria inicial
+
+  ;Constantes para los segmentos todo esto dejarlo como esta
+SEG_CODIGO     EQU     0030h    ; inicio seg codigo
+SEG_DATOS1     EQU     0020h    ; seg datos     
+SEG_CONST      EQU     0090h    ; Constantes en rom
+SEG_STACK      EQU     00C0h    ; Segmento de stack
+
+LONG_STACK     EQU     10     ; Longitud en bytes del stack
+
+;--------------REGISTROS DE LOS TIMERS------------------------------------------
+  ;Constantes de reloj
+FRECUENCIA_CLOCK        EQU     12000  ; Frecuencia de clock externa, kHz
+DIV_CLOCK_INT           EQU     12     ; Divisor interno
+FREC_PERIF              EQU     (FRECUENCIA_CLOCK/DIV_CLOCK_INT) ; Frec entrada timer
+  
+  ;Para interrupciones VER EL MANUAL DE HW EN LA PAG 17
+INT_PRIORIDAD   EQU     0x00    ; prioridad baja
+
+; IE: EA X X ES ET1 EX1 ET0 EX0 VER EL MANUAL DE HW EN LA PAG 17
+INT_HABILITADAS EQU     b'10000010     ; EA=1, ET0=1, TIMER 0 INT
+INT_HABILITADAS EQU     b'10001000     ; EA=1, ET1=1, TIMER 1 INT
+INT_HABILITADAS EQU     b'10000001     ; EA=1, EX0=1, TIMER 0 EXT
+INT_HABILITADAS EQU     b'10000100     ; EA=1, EX1=1, TIMER 1 EXT
+; IE 8052: EA X ET2 ES ET1 EX1 ET0 EX0
+INT_HABILITADAS EQU     b'10100000     ; EA=1, ET2=1, TIMER 2 INT
+; habilita interrupciones e interrupcion del timer
+
+; TMOD: (GATE CT M1 MO) (GATE CT M1 MO) T1 T0 VER EL MANUAL DE HW EN LA PAG 7
+TMOD_INICIAL    EQU     b'00000001    ; TIMER 0 MODO 1 TIMER
+TMOD_INICIAL    EQU     b'00000101    ; TIMER 0 MODO 1 COUNTER
+TMOD_INICIAL    EQU     b'00000010    ; TIMER 0 MODO 2 TIMER
+TMOD_INICIAL    EQU     b'00000110    ; TIMER 0 MODO 2 COUNTER
+TMOD_INICIAL    EQU     b'00010000    ; TIMER 1 MODO 1 TIMER
+TMOD_INICIAL    EQU     b'01010000    ; TIMER 1 MODO 1 COUNTER
+TMOD_INICIAL    EQU     b'00100000    ; TIMER 1 MODO 2 TIMER
+TMOD_INICIAL    EQU     b'01100000    ; TIMER 1 MODO 2 COUNTER
+; T2MOD: X X X X X X T2OE DCEN
+TMOD_INICIAL    EQU     b'00000000    ; TIMER 2 MODO AUTORECARGA
+
+; TCON: TF1 TR1 TF0 TR0 IE1 IT1 IE0 IT0 VER EL MANUAL DE HW EN LA PAG 7
+TCON_INICIAL    EQU     b'00010000    ; TR0=1 TIMER 0 ON
+TCON_INICIAL    EQU     b'01000000    ; TR1=1 TIMER 1 ON
+TCON_INICIAL    EQU     b'00000000    ; EXTERNAS??
+; T2CON: TF2 EXF2 RCLK TCLK EXEN2 TR2 CT2 CPRL2
+TCON_INICIAL    EQU     b'00000100    ; TR2=1 TIMER 2 ON
+
+;----------ACA CALCULO LA CUENTA DEL TIMER Y EL VALOR DE RECARGA----------------
+TICK_TMR0               EQU     1       ; Per�odo del tick en ms, cada cuantos milisegundos pasa la interrupcion
+VALOR_TIMER             EQU     (FREC_PERIF*TICK_TMR0)  ; Valor del timer - frec entrada /  frec salida valor divisor timer
+; entra una frecuencia y sale con otra (la que quiero tener) hace la cuenta de cuantos ciclos tiene que contar
+CICLOS_TMR0_DETENIDO    EQU     7       ; Tiempo que permanece detenido en la ISR el Timer 0.
+RECARGA_TMR0            EQU     (0xFFFF-VALOR_TIMER+CICLOS_TMR0_DETENIDO)      ; Valor de recarga del timer
+; como es timer ascendente, calculo valor complementario de lo que quiero contar, le suma los pulsos que timer esta parado
+
+;----------ACA DEFINO MIS VARIABLES Y CONSTANTES--------------------------------
+
+
+;-------------------------------------------------------------------------------
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; Direct the reset vector to the program entry label. 
+           ;asegn   INTVEC:CODE, 0x0000
+           ASEG
+           ORG 0000h                    ; RESET
+           LJMP main
+
+;--------VECTORES DE INTERRUPCION-----------------------------------------------
+           ; EXT TIMER0 vector
+           ASEG
+           ORG 0003H                     ; Definir el vector de interrupcion
+           LJMP Isr_Ext0                 ; Definir el el salto a la ISR
+
+           ; INT TIMER0 vector
+           ASEG
+           ORG 000BH                     ; Definir el vector de interrupcion
+           LJMP Isr_Tmr0                 ; Definir el el salto a la ISR
+
+           ; EXT TIMER1 vector
+           ASEG
+           ORG 0013H                     ; Definir el vector de interrupcion
+           LJMP Isr_Ext1                 ; Definir el el salto a la ISR
+
+           ; INT TIMER1 vector
+           ASEG
+           ORG 001BH                     ; Definir el vector de interrupcion
+           LJMP Isr_Tmr1                 ; Definir el el salto a la ISR
+
+           ; INT TIMER2 vector
+           ASEG
+           ORG 002BH                     ; Definir el vector de interrupcion
+           LJMP Isr_Tmr2                 ; Definir el el salto a la ISR
+
+
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ;RSEG ISTACK:IDATA:NOROOT(0)
+            ASEG
+            ORG 00b8h
+stack_init  DS          LONG_STACK             ;Define el segmento de stack       
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+
+;:::Segmento relocalizable::::::::::::::
+;       RSEG    IDATA_Z:DATA:NOROOT  
+;::::::::::::::::::::::::::::::::::::::
+;::Segmento absoluto:::::::::::::::::::::
+        ASEG    
+        ORG     SEG_DATOS1
+;::::::::::::::::::::::::::::::::::::::
+
+var_bit        DS       1     
+
+;ESPACIO de BUFFER
+buffer  DS      LONG_BUFFER
+
+;TABLA RAM
+        RSEG    IDATA_Z:DATA:NOROOT  
+       
+;-------------------------------------------------------------------------------
+;Inicia el c�digo
+        
+        ;RSEG    NEAR_CODE:CODE:ROOT            ;defino un segmento de c�digo
+        RSEG    RCODE
+        ORG     SEG_CODIGO                      ;define el punto de inicio del Programa (code) 
+main    
+
+;**Inicializaciones
+        ;Inicializo el STACK
+        MOV SP,#stack_init-1                      ;inicializo el stack
+        
+;---------------ACA INICIALIZO LOS VALORES DE MIS VARIABLES---------------------
+        
+        ;Inicializo Interrupciones
+        CALL InitPerif_Interrupciones
+       
+                
+;**Inicio loop principal    
+Loop_ppal:      
+          ; ACA ES DONDE VA SENSANDO
+SALIR:  JMP     SALIR  ; loop infinito
+
+;-------Subrutinas--------------------------------------------------------------
+        RSEG NEAR_CODE:CODE:NOROOT(0)
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+; Parametros:ninguno
+; Devuelve:nada
+; Modifica:
+;       IP, IE, TCON, TMOD,TH0,TL0
+; Nivel de Stack: 2
+;
+; Descripci�n:
+;       Inicializa las interrupciones y algunos perif�ricos como el timer
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+;---------ACA INICIALIZO LOS TIMERS, TMOD, TCON, TL, TH, IP, IE-----------------        
+        ;Para el timer
+        MOV     TL0, #LOW(RECARGA_TMR0)	; Recargo la parte baja del Timer 0 valor de recarga del timer
+	MOV	TH0, #HIGH(RECARGA_TMR0); Recargo la parte alta del Timer 0
+	MOV     TMOD, #TMOD_INICIAL     ; Inicializo Timer/Counter Mode Register
+	MOV     TCON, #TCON_INICIAL	; Inicializo Timer/Counter Control Register
+
+        
+
+	; Seleccionar la prioridad de las interrupciones
+        MOV     IP,#INT_PRIORIDAD        ;Prioridad baja para todos, prioridad de las interrupciones
+        
+        ; Habilitar interrupci�n, es lo �ltimo a hacer antes de entrar al lazo ppal.
+        MOV     IE,#INT_HABILITADAS      ;Habilito las interrupciones seg�n la cte
+        ; las interrupciones las habilito ULTIMAS para que empiece a contar ahora, 
+        ; sino no esta cargado el timer pero puede interrumpir y no tiene sentido
+        ; tiene que estar TODO listo ANTES de inicializar las interrupciones
+
+      ret
+
+;-------------------------------------------------------------------------------
+;===ISRs========================================================================
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Tmr0
+; Parametros:ninguno
+; Devuelve:nada
+; Descripcion:
+;       Rutina de servicio de interrupcion del timer 0
+;-------------------------------------------------------------------------------  
+ ;Isr_Ext0:
+ Isr_Tmr0:
+ ;Isr_Ext1:
+ ;Isr_Tmr1:
+ ;Isr_Tmr2:
+      PUSH	PSW				; Resguardo registros modificados por esta subrutina
+      ; como en la interrupcion esta voy a sumar y etc, guardo el contexto para poder usar estos registros
+      ; "salvo" el PSW y el A porque lo use en la rutina, se guarda en el stack
+      PUSH	A   ; ahora el stack tiene dir retorno + PSW + A pq los use aca adentro y los pushee
+
+      CLR       IE_EA                           ;EA, Deshabitito las Interrupciones
+      CLR	TCON_TR0			;Detengo la cuenta del Timer 0
+
+      ;  desde aca tiene que contar los ciclos que el timer quedo parado pero la cpu siguio corriendo
+; no recarga directo el valor pq hasta que desactive las interr el timer avanzo
+; un poco mas. Hizo el overflow, pero hasta que atendi la interr paso un tiempo,
+; capaz TL0 y TH0 tienen algun valor de 1 o 2, entonces les sumo el valor de 
+; recarga para hacer el tiempo mas exacto.
+
+      MOV	a, # LOW (RECARGA_TMR0)	        ; Recupero el valor la parte baja de Recarga del Timer 0
+      ADD	a, TL0				; Le sumo lo acumulado en la parte baja del Timer 0 desde 
+                                                ; que se produjo la Interrupci�n
+      MOV	TL0,a				; Recargo la parte baja del Timer 0
+
+      MOV	a, # HIGH (RECARGA_TMR0)	; Recupero el valor la parte alta de Recarga del Timer 0
+      ADDC	a, TH0				; Le sumo lo acumulado en la parte alta del Timer 0 desde 
+                                                ; que se produjo la Interrupci�n
+      MOV	TH0,a				; Recargo la parte alta del Timer 0
+
+      SETB	TCON_TR0			; Arranco la cuenta del Timer 0
+      SETB	IE_EA				; Habitito las Interrupciones
+      ; hasta aca se cuentan los ciclos que el timer estuvo parado
+
+      ;-------------------------------------------------------------------------
+      ; Aca se realiza lo pertinente a la rutina de Interrupcion
+      ;-------------------------------------------------------------------------
+      ; ACA VA MI CODIGO PARA LA INTERRUPCION
+
+ 
+      POP	A				; Recupero registros previamente resguardados
+      POP	PSW
+     ; RECORDAR QUE ES UNA PILA Y SALE PRIMERO LO ULTIMO QUE GUARDE
+      reti
+
+
+ 
+;===============================================================================
+  END     main
+
+;-------------------------------------------------------------------------------
+; Nombre: 
+; Parametros:
+; Devuelve:
+; Modifica:
+; Nivel de Stack:
+;
+; Descripci�n:
+;-------------------------------------------------------------------------------
+

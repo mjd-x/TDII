@@ -1,0 +1,138 @@
+;	includes
+$bitdef.h
+$ioAT89C52.h
+
+;	declaro prototipos del main e interrupciones
+NAME	main
+PUBLIC	main
+
+PUBLIC	int_ps
+PUBLIC	config	;sin ASEG
+PUBLIC	actuar	;sin ASEG
+PUBLIC	desagotar ;sin ASEG
+PUBLIC	enjuagar	;sin ASEG
+PUBLIC	cargar	;sin ASEG
+
+;	defino la longitud del stack en bytes
+LONG_STACK	EQU	10
+;	defino desde dónde arranca el segmento 
+SEG_STACK	EQU	40h
+
+ASEG
+ORG	0000h
+LJMP	main
+
+ASEG
+ORG	0023h
+LJMP	int_ps
+
+ASEG
+ORG	SEG_STACK
+stack_init	DS LONG_STACK
+
+f_bombaA	EQU	P3.7
+f_bombaX	EQU	P3.6
+f_ev		EQU P3.5
+led			EQU	P3.4
+alarma		EQU	P3.3 ;LED ROJO
+
+
+main:
+	CALL config
+
+	loopppal:
+
+		CALL actuar
+		JMP	loopppal
+
+config:
+	MOV	IP,	00000000b
+	MOV	SCON, 01010000b
+	MOV	PCON, 00000000b
+	MOV	TL1, FDh
+	MOV TH1, FDh
+	MOV	TMOD, 00100000b
+	MOV	TCON, 01000000b
+	MOV	IE,	10010000b
+
+	MOV	SP, #stack_init-1
+	RET
+
+actuar:
+	MOV A, n_tanque
+	CJNE	A, #0, call_desagotar
+		CLR	f_ev
+		CALL enjuagar
+		CALL desagotar
+		CLR	f_ev
+		CALL cargar
+		JMP fin_actuar
+
+		call_desagotar:
+			CALL desagotar
+		fin_actuar:
+			RET
+
+desagotar:
+	MOV A, n_tanque
+	CJE A,	#0,	fin_desagotar
+		SETB	f_ev
+		JMP	fin_desagotar
+	fin_desagotar:
+		RET
+
+enjuagar:
+	MOV A, n_tanque
+	SETB	f_bombaA
+	sigo_enjuagando:
+		CJNE A, #10, sigo_enjuagando
+			CLR f_bombaA
+			RET
+cargar:
+	MOV	 A,	n_tanque
+	SETB	f_bombaA
+	cargo_agua:
+		CJNE A, #93, cargo_agua
+			CLR f_bombaA
+			SETB	f_bombaX
+			sigo_cargando:
+				CJNE A, #100, veo_menor
+					CLR	f_bombaX
+					SETB	LED
+					JMP fin_cargar
+					veo_menor:
+						JNC sigo_cargando
+							CLR f_bombaX
+							SETB alarma
+							JMP fin_cargar
+					fin_cargar:
+						RET
+
+int_ps:
+	PUSH A
+	PUSH PSW
+	JNB RI, fin_int
+		CLR RI 
+		MOV A, SBUF
+		CJE A, #100, termine
+			MOV n_tanque, SBUF
+			JMP	fin_int_posta
+			termine:
+				CLR f_bombaA
+				CLR f_bombaX
+				CLR f_ev
+				MOV n_tanque, SBUF
+				JMP fin_int_posta
+	fin_int:
+		CLR TI 
+		JMP fin_int_posta
+
+fin_int_posta:
+	POP PSW ;RECORDAR, LIFO o PILA
+	POP A
+	RETI
+
+
+
+END	main
+

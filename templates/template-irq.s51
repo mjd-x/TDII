@@ -1,0 +1,65 @@
+;-------------------------Definiciones------------------------------------------
+
+;#include "io80C52.h" ; incluye los registros del 8052
+$bitdef.h       ;manejo de bits 
+$ioAT89C52.h    ;incluye los registros del 8051
+
+MIBYTE EQU 20H  ; defino bit en direccion 20H
+LED    EQU P1.2 ; defino bit en puerto 1
+
+  ORG 0000H       ; en el reset viene aca
+  JMP main        ; salto al main
+
+  ORG 0003H       ; interrupcion timer 0 externa
+  JMP int0IRQ     ; salto a la rutina de interrupcion
+
+  ORG 000BH       ; interrupcion timer 0 TF0
+  JMP tf0IRQ      ; salto a la rutina de interrupcion
+
+  ORG 0013H       ; interrupcion timer 1 externa
+  JMP int1IRQ     ; salto a la rutina de interrupcion
+
+  ORG 001BH       ; interrupcion timer 1 TF1
+  JMP tf1IRQ      ; salto a la rutina de interrupcion
+
+;  ORG 002Bh       ; interrupcion timer 2 TF2 (8052)
+;  JMP tf2IRQ      ; entra a la rutina de interrupcion (8052)
+  
+;------------------------Rutinas de interrupcion--------------------------------
+
+int0IRQ:
+  RETI
+  
+tf0IRQ:
+  RETI
+  
+int1IRQ:
+  RETI
+  
+tf1IRQ:
+  RETI
+  
+tf2IRQ:
+  RETI
+
+;-----------------------Subrutinas----------------------------------------------
+
+init_T2_10k:
+  RET
+  
+init_interr:
+  RET
+ 
+;-----------------------Programa principal--------------------------------------
+
+main:
+    CALL init_T2_10k     ; inicializar timer 2, cada 10 kHz produce interrupc
+    CALL init_interr     ; inicializar interrupciones
+    ;MOV CONTADOR, #100   ; cargo contador en 100 para que pase 100 veces
+    SETB T2CON_TR2       ; inicio el timer una vez que esta todo configurado
+    ; a partir de ahora el timer 2 esta contando
+    SETB IE_ET2          ; inicio interrupciones individuales del timer 2
+    ; desde ahora se producen las interrupciones
+LOOP: JMP LOOP           ; repetir todo el tiempo, loop infinito
+    ; solo lo saca de este loop la interrupc del timer, y lo lleva a interrupc
+  END

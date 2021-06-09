@@ -1,0 +1,75 @@
+
+SPE             EQU         P3.2    ; INT0
+SPS             EQU         P3.3    ; INT1
+LED_ROJO        EQU         P1.0
+LED_AMBAR       EQU         P1.1
+LED_VERDE       EQU         P1.2
+
+disponibles     EQU         30h
+
+ASEG
+ORG         0000h
+LJMP        main
+
+ASEG
+ORG         0003h
+LJMP        intExt0
+
+ASEG
+ORG         0013h
+LJMP        intExt1
+
+main:
+    CALL    configurar
+loopPrincipal:
+    CALL    actuar
+    JMP     loopPrincipal
+
+configurar:
+    MOV     IE, #10000001b
+    MOV     IP, #00000000b
+    MOV     TCON, #00000101b
+    MOV     disponibles, #10
+    RET
+
+actuar:
+    MOV     A, disponibles
+    JNZ     hay_asientos_disponibles
+;no_hay_asientos_disponibles:
+        CLR     EX0
+        SETB    LED_ROJO
+        CLR     LED_AMBAR
+        CLR     LED_VERDE
+    JMP     acabe       
+hay_asientos_disponibles:
+        SETB    EX0
+        CJNE    A, #1, luz_verde
+;luz_ambar:
+            CLR     LED_ROJO
+            SETB    LED_AMBAR
+            CLR     LED_VERDE
+        JMP     acabe
+luz_verde:
+        CLR     LED_ROJO
+        CLR     LED_AMBAR
+        SETB    LED_VERDE
+        CJNE    A, #10, escuchar_ex1
+; no_escuchar_ex1:
+            CLR     EX1
+        JMP     acabe
+escuchar_ex1:
+            SETB    EX1
+acabe:
+    RET
+
+intExt0:
+    MOV     A, disponibles
+    DEC     A
+    MOV     disponibles, A
+    RETI
+
+intExt1
+    MOV     A, disponibles
+    INC     A
+    MOV     disponibles, A
+    RETI

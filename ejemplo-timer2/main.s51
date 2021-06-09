@@ -1,0 +1,60 @@
+; ejercicio para producir 100 burst de 3 pulsos en P2.2 a 10kHz
+
+#include "io80C52.h" ; incluye los registros del 8052
+
+PULSOS EQU P2.2 ; los pulsos salen de P2.2
+CONTADOR EQU 0030h  ; no pongo Rs pq aca estoy poniendo una direccion, 
+                    ; puse una direccion de memoria disponible
+
+  ORG 0000h         ; en el reset viene aca
+  JMP main          ; salto a main
+
+  ORG 002Bh         ; interrupcion del timer, cada vez que TF2=1 viene aca
+  JMP timer2IRQ     ; entra a la rutina de interrupcion del timer 2
+
+timer2IRQ:
+    ; aca necesito hacer los 3 pulsos de 1 microseg, cada 0,1ms corre esto
+    SETB PULSOS ; pone el bit en 1
+    CLR PULSOS  ; pone el bit en 0, tardo 1microseg en subir y bajar
+    SETB PULSOS ; pone el bit en 1
+    CLR PULSOS  ; pone el bit en 0, tardo 1microseg en subir y bajar
+    SETB PULSOS ; pone el bit en 1
+    CLR PULSOS  ; pone el bit en 0, tardo 1microseg en subir y bajar
+    ; hizo 3 pulsos y ahora sale de la interrupcion de nuevo al loop infinito
+
+    ; supongamos que queremos que pase solo 100 veces
+    ; pongo el djnz aca porque quiero que la interrupcion pase 100 veces
+    DJNZ CONTADOR, SALIR ; salir mientras no llego a 100 veces
+    CLR IE_ET2           ; si llego a 100 deshabilita las interrupciones
+SALIR:                   ; etiqueta para DJNZ, salir si no llego a 100
+  RETI
+
+init_T2_10k:
+    ; inicializar el timer, modo, valores de recarga, etc, ver en el manual
+    ; cargo los registros
+    MOV TH2, #0FFH       ; cargo TH2 con FF
+    MOV TL2, #09CH       ; cargo TL2 con 9C
+    ;cargo los registros de recarga
+    MOV RCAP2H, #0FFH    ; valor de recarga alto FF
+    MOV RCAP2L, #09CH    ; valor de recarga bajo 9C
+    ; cargo los registros del divisor (100)
+
+    MOV T2CON, #00H      ; CT2=0, TR2=0, EXEN2=0
+    MOV T2MOD, #00H      ; DCEN=0 para modo autorecarga 
+  RET
+
+init_interr:
+    SETB IE_EA           ; inicio interrupciones globales, tmb puede ir en main
+  RET
+
+main:
+    CALL init_T2_10k     ; inicializar timer 2, cada 10 kHz produce interrupc
+    CALL init_interr     ; inicializar interrupciones
+    MOV CONTADOR, #100   ; cargo contador en 100 para que pase 100 veces
+    SETB T2CON_TR2       ; inicio el timer una vez que esta todo configurado
+    ; a partir de ahora el timer 2 esta contando
+    SETB IE_ET2          ; inicio interrupciones individuales del timer 2
+    ; desde ahora se producen las interrupciones
+LOOP: JMP LOOP           ; repetir todo el tiempo, loop infinito
+    ; solo lo saca de este loop la interrupc del timer, y lo lleva a timer2IRQ
+  END

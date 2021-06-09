@@ -1,0 +1,277 @@
+;-------------------------------------------------------------------------------
+; Fecha: 04/06/2021
+;
+; Programador: FUENTES, Horacio 
+;
+; Descripción: Practica Parcial 02 - Un trabajador llega al puesto de trabajo 
+; y activa el sistema, una vez que inicia, desde 0 hasta 10 autos: luz verde 
+; puede entrar, luz roja ocupado. Existe un sensor a la entrada y otro a la 
+; salida el conteo se habilita desde la cabina del empleado
+
+; Modificaciones:
+;
+;-------------------------------------------------------------------------------
+
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        
+        ;--ISRs
+        PUBLIC  Isr_Tmr0
+        PUBLIC  Isr_Ext1
+        ;--Declaro públicas las subrutinas
+        PUBLIC  InitPerif_Interrupciones
+        PUBLIC  Sondeo_LOOP
+
+;---CONSTANTES------------------------------------------------------------------
+
+  ;Registros generales
+CTE_SUMA        EQU     0x3E        ; Número cte para operar
+LONG_BUFFER     EQU     10          ; Longitud del buffer
+ADDR_INICIAL    EQU     0x40        ; Dirección de memoria inicial
+
+  ;Constantes para los segmentos
+SEG_CODIGO     EQU     0030h    ; inicio seg codigo
+SEG_DATOS1     EQU     0020h    ; seg datos     
+SEG_CONST      EQU     0090h    ; Constantes en rom
+SEG_STACK      EQU     00C0h    ; Segmento de stack
+LONG_STACK     EQU     10       ; Longitud en bytes del stack
+  
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00    ; prioridad baja
+INT_HABILITADAS EQU     b'10000110    ;IE_EA=1, 0, 0, IE_S=0, IE_ET1=0,IE_EX1=1, IE_ET0=1, IE_EX0=0
+
+  ;Para TIMER
+TMOD_INICIAL    EQU     b'00000110    ;GATE1=0,C/T1=0,M1=0,M0=0,GATE0=0,C/T0=1,M1=1,M0=0, TMOD_bit 
+                                      ; modo 2 timer 0, MODO CONTADOR
+                                      
+TCON_INICIAL    EQU     b'00010000    ;TF1=0,TR1=0,TF0=0,TR0=1,IE1=0,IT1=0,IE0=0, IT0=0, TCON_bit 
+
+  ;Para Isr_Tmr0
+
+RECARGA_TIMER0  EQU     0F5H            ; 255-10 = 245 = 0F5H
+  ;Para Isr_Ext0
+
+
+  ;Para programaPrincipal
+LLAVE_INICIO            EQU     P1.0  ; boton para iniciar la cinta
+LED_VERDE               EQU     P1.1  ; LED
+LED_ROJO                EQU     P1.2  ; LED
+
+
+  ;Variables
+CANTIDAD_AUTOS          EQU     0030H ; VARIABLE QUE CUENTA LA CANTIDAD DE AUTOS QUE HAY EN EL ESTACIONAMIENTO
+REGISTRO_DOS            EQU     0031H ; VARIEBLE PARA RESGUARDAR INFORMACION DE R2
+REGISTRO_TRES           EQU     0032H ; VARIEBLE PARA RESGUARDAR INFORMACION DE R3
+
+
+;-------------------------------------------------------------------------------
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; Direct the reset vector to the program entry label. 
+           ;asegn   INTVEC:CODE, 0x0000
+            ASEG
+            ORG 0000h                     ; RESET
+            LJMP main                     ; salto al main                       
+           
+           ;INT TIMER0 vector
+            ASEG
+            ORG 000BH                     ;(1°) Definir el vector de interrupción
+            LJMP Isr_Tmr0                 ;(2°) Definir el el salto a la ISR
+
+          ;INT EXT1 vector
+            ASEG
+            ORG 0013H                     ;(1°) Definir el vector de interrupción
+            LJMP Isr_Ext1                 ;(2°) Definir el el salto a la ISR
+
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ;RSEG ISTACK:IDATA:NOROOT(0)
+            ASEG
+            ORG 00b8h
+stack_init  DS          LONG_STACK             ; Define el segmento de stack       
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+
+;:::Segmento relocalizable::::::::::::::
+;       RSEG    IDATA_Z:DATA:NOROOT  
+;:::::::::::::::::::::::::::::::::::::::
+;::Segmento absoluto::::::::::::::::::::
+        ASEG    
+        ORG     SEG_DATOS1
+;:::::::::::::::::::::::::::::::::::::::
+
+var_bit        DS       1   
+
+;ESPACIO de BUFFER
+buffer  DS      LONG_BUFFER
+
+;TABLA RAM
+        RSEG    IDATA_Z:DATA:NOROOT  
+     
+;-------------------------------------------------------------------------------
+;Inicia el código
+        
+        ; RSEG    NEAR_CODE:CODE:ROOT            ; defino un segmento de código
+        RSEG    RCODE
+        ORG     SEG_CODIGO                      ; define el punto de inicio del Programa (code) 
+
+
+main    
+
+;**Inicializaciones
+        ; Inicializo el STACK
+        MOV SP,#stack_init-1                    ; inicializo el stack
+        
+        MOV     CANTIDAD_AUTOS, #0 
+        CLR     LLAVE_INICIO
+ESPERA_ON:
+        JB      LLAVE_INICIO, INICIO
+        JMP     ESPERA_ON
+INICIO:
+        ;Inicializo Interrupciones
+        CALL    InitPerif_Interrupciones
+        
+        ;loop principal DE SONDEO    
+Loop_ppal:
+        CALL    Sondeo_LOOP
+        JMP     Loop_ppal                       ; repito, loop
+
+;-------Subrutinas--------------------------------------------------------------
+        RSEG NEAR_CODE:CODE:NOROOT(0)
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+; Parametros: ninguno
+; Devuelve: nada
+; Modifica:
+;       IP, IE, TCON, TMOD, TH0, TL0
+; Nivel de Stack: 2
+;
+; Descripción:
+;       Inicializa las interrupciones EXT1 Y el timer 0
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+        ; Para inicializar el timer 0
+        MOV     TL0, #RECARGA_TIMER0	 ; Recargo la parte baja del Timer 0
+	MOV	TH0, #RECARGA_TIMER0    ; Recargo la parte alta del Timer 0
+
+	MOV     TMOD, #TMOD_INICIAL	 ; Inicializo Timer/Counter Mode Register
+	MOV     TCON, #TCON_INICIAL	 ; Inicializo Timer/Counter Control Register
+
+	;(3°) Seleccionar la prioridad de las interrupciones
+        MOV     IP,#INT_PRIORIDAD        ; Prioridad baja para todos   
+        
+        ;(4°) Habilitar interrupción, es lo último a hacer antes de entrar al lazo ppal
+        MOV     IE,#INT_HABILITADAS      ; Habilito las interrupciones según la cte
+
+      RET
+;-------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
+; Nombre: Sondeo_LOOP
+; Parametros: ninguno
+; Devuelve: nada
+; Modifica:
+;      CANTIDAD_AUTOS
+; Nivel de Stack: 2
+;
+; Descripción:
+;       SE FIJA CUANTOS AUTOS HAY Y MANTIENE LAS LUCES Q CORRESPONDAN
+;-------------------------------------------------------------------------------
+Sondeo_LOOP:
+        MOV     REGISTRO_TRES, TL0
+        MOV     A, #0FFH
+        SUBB    A, REGISTRO_TRES
+        MOV     CANTIDAD_AUTOS, A ;ACTUALIZA EL VALOR DE LA CANTIDAD DE AUTOS QUE HAY EN EL ESTACIONAMIENTO
+        MOV     R2, CANTIDAD_AUTOS
+        CJNE    R2, #10, HAY_LUGAR              ;COMPRUEBA SI LA CANTIDAD DE AUTOS NO ES 10
+        CLR     LED_VERDE
+        SETB    LED_ROJO
+        JMP     SALIR_Sondeo_LOOP
+HAY_LUGAR:
+        CLR     LED_ROJO
+        SETB    LED_VERDE
+SALIR_Sondeo_LOOP:
+        RET
+;-------------------------------------------------------------------------------
+
+;===ISRs========================================================================
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Tmr0
+; Parametros: ninguno
+; Devuelve:nada
+; Modifica:
+;       
+; Nivel de Stack: 2
+;
+; Descripción:
+;       Rutina de servicio de interrupción del timer 0, SE DESENCADENA CUANDO ENTRARON 10 AUTOS
+;-------------------------------------------------------------------------------  
+Isr_Tmr0:
+      ;-------------------------------------------------------------------------
+      ; Preparo todo para atender la interrupción (Salvo el contexto)
+      ;-------------------------------------------------------------------------     
+      
+       PUSH	PSW				; Resguardo registros modificados por esta subrutina
+       PUSH	A                               ; Resguardo Acumulador
+       MOV      REGISTRO_DOS, R2                ; Guardo valor de R2 en variable
+       PUSH     REGISTRO_DOS                    ; Resguardo registro R2
+
+       CLR      LED_VERDE                       ;APAGA LUZ VERDE
+       SETB     LED_ROJO                        ;PRENDE LUZ ROJA
+       CLR      TCON_TR0                        ;DESABILITA EL CONTADOR DEL TIMER
+
+
+SALIR_Isr_Tmr0:
+      ; Recupero todos los registros y salgo de la rutina de interrupcion
+      POP       REGISTRO_DOS        ; Recupero registro R2
+      MOV       R2, REGISTRO_DOS    ; Muevo el valor a R2
+      POP	A		    ; Recupero registros previamente resguardados
+      POP	PSW
+      
+      RETI                         ; no hace nada mas y sale de la interrupcion
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Ext1
+; Parametros: ninguno
+; Devuelve:nada
+; Modifica:
+;      
+; Nivel de Stack: 2
+;
+; Descripción:
+;       Rutina de servicio de interrupción EXT1, SE DESENCADENA CUANDO SALE UN AUTO
+;-------------------------------------------------------------------------------  
+Isr_Ext1:
+      ;-------------------------------------------------------------------------
+      ; Preparo todo para atender la interrupción (Salvo el contexto)
+      ;-------------------------------------------------------------------------     
+      
+       PUSH	PSW				; Resguardo registros modificados por esta subrutina
+       PUSH	A                               ; Resguardo Acumulador
+       MOV      REGISTRO_DOS, R2                ; Guardo valor de R2 en variable
+       PUSH     REGISTRO_DOS                    ; Resguardo registro R2
+
+      DEC       TL0                     ;DECREMENTA EL CONTADOR DE LOS VEHICULOS DENTRO DEL ESTACIONAMIENTO
+      MOV       A,TL0
+      CLR       LED_ROJO                 ;HABILITA EL INGRESO EN FORMA VISUAL
+      SETB      LED_VERDE               ;HABILITA EL INGRESO EN FORMA VISUAL
+      SETB      TCON_TR0                ;HABILITA EL TIMER0 EN EL CASO DE QUE HAYA SIDO DESHABILITADO
+      
+
+SALIR_Isr_Ext1:
+      ; Recupero todos los registros y salgo de la rutina de interrupcion
+
+      POP       REGISTRO_DOS        ; Recupero registro R2
+      MOV       R2, REGISTRO_DOS    ; Muevo el valor a R2
+      POP	A		    ; Recupero registros previamente resguardados
+      POP	PSW
+      
+      RETI                         ; no hace nada mas y sale de la interrupcion
+
+
+ 
+;===============================================================================
+
+  END     main                          ; fin del programa

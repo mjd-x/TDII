@@ -1,0 +1,7 @@
+Link de instalación:
+https://www.iar.com/iar-embedded-workbench/#!?architecture=8051
+
+Para instalar el IAR, seleccionar en el proceso de instalación el
+sistema de licencia "KickStart".
+
+Requiere se genere un logging vía internet, esperar recibir un correo con un código para finalizar el proceso de licencia.

@@ -1,0 +1,123 @@
+
+;	includes
+$bitdef.h
+$ioAT89C52.h
+
+;	declaro prototipos del main e interrupciones
+NAME	main
+PUBLIC	main
+PUBLIC int_ext_E
+PUBLIC int_ext_S
+
+;	defino la longitud del stack en bytes
+LONG_STACK	EQU	10
+;	defino desde dónde arranca el segmento 
+SEG_STACK	EQU	40h
+
+///////////////////////////////////////////////////////////
+ASEG
+ORG	0000h
+LJMP	main
+
+ASEG
+ORG	0013h
+LJMP	int_ext_E	;TIMER 1
+
+ASEG
+;ORG	00??h  ;definir posicion EXF2 ????
+LJMP	int_ext_S	;TIMER 2
+
+ASEG
+ORG	SEG_STACK
+stack_init	DS LONG_STACK
+
+///////////////////////////////////////////////////////////
+Pin_Barrera EQU P1.7
+Pin_Rojo	EQU P1.6
+Pin_Verde	EQU	P1.5
+
+;Flags(bits)
+Barrera 	EQU	01
+Semaforo	EQU 02
+
+;"Variables" (bytes)
+Lugares 	EQU 31h
+Numero		EQU 32h
+
+///////////////////////////////////////////////////////////
+main:
+	CALL config
+
+	Loop_ppal:
+		call Loop
+		
+		JMP	Loop_ppal
+
+config:
+	mov Lugares,Numero
+	setb Semaforo
+	setb Barrera
+ret
+
+///////////////////////////////////////////////////////////
+Loop:
+	jb Semaforo,VERDE
+	clr Pin_Verde
+	setb Pin_Rojo
+	jmp barrera
+	VERDE:
+	clr Pin_Rojo
+	setb Pin_Verde
+	jmp barrera
+
+	barrera:
+	jb	Barrera,Salto
+	clr Pin_Barrera
+	jmp fin
+	Salto:
+	set Pin_Barrera
+	jmp fin
+
+	fin:
+
+ret
+
+///////////////////////////////////////////////////////////
+int_ext_E:
+	PUSH A
+	PUSH PSW
+
+	dec Lugares
+	mov A,Lugares
+	CJNE A,#0,Fin_int_E
+	clr Semaforo
+	clr Barrera
+	Fin_int_E:
+
+	JMP fin_int_posta
+
+fin_int_posta:
+	POP PSW ;RECORDAR, LIFO o PILA
+	POP A
+
+	RETI
+
+///////////////////////////////////////////////////////////
+int_ext_S:
+	PUSH A
+	PUSH PSW
+
+	mov A,Lugares
+	CJNE A,#0,Fin_int_S
+	setb Semaforo
+	setb Barrera
+	Fin_int_S:
+	inc Lugares
+
+	JMP fin_int_posta
+
+fin_int_posta:
+	POP PSW ;RECORDAR, LIFO o PILA
+	POP A
+
+	RETI

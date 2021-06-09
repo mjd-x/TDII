@@ -1,0 +1,201 @@
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        
+        ;--- ISRs ---
+        PUBLIC  Isr_Serie
+        ;--- Declaro públicas las subrutinas ---
+        PUBLIC  InitPerif_Interrupciones
+
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00            ;prioridad baja
+INT_HABILITADAS EQU     b'10010000     ;habilitación serie y de timer 1
+
+  ;Para TIMERs
+TMOD_INICIAL    EQU     b'00100000   ;Registro de modo de timers
+                                      ;modo 1 timer 0, con uso del Fosc
+                                      ;modo 2 timer 1, con uso de Fosc
+                                      
+TCON_INICIAL    EQU     b'01010000    ;Registro de control de timers, tmr0 y tmr1 ON
+
+  ;TIMER 1
+RECARGA_TMR1            EQU     0xFD		; Cuenta de Recarga del Timer 1
+
+  ;UART
+SCON_INICIAL            EQU     b'01010000      ;Modo 1 (SM0=0;SM1=1) Recepción habilitada
+
+;Puerto I/O
+RX_SERIE_I              EQU     P3.0    ;entrada de recepción serie
+TX_SERIE_O              EQU     P3.1    ;Salida de transmisión serie.
+
+LED_RX_STATUS           EQU     P2.3    ;led de recepción serie, hace toggle
+LED_TX_STATUS           EQU     P2.0    ;led de transmisión libre
+;-------------------------------------------------------------------------------
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+            org 0000h
+            ljmp    main
+
+            org  0023H                   ;(1°) Defino el vector de Interrupción
+            ljmp Isr_Serie               ;(2°) Defino el salto a la Isr.
+                  
+dato_rx         ds    1         ;dato recibido del puerto serie, se carga en ISR
+hay_dato_rx     ds    1         ;flag de que hay un dato recibido canal serie. En '1', hay dato, en '0', no hay dato .
+dato_tx_end     ds    1         ;señala que el canal serie ya terminó de transmitir, estado '1'. En cero '0' canal ocupado.
+tx_idle         ds    1         ;señala que el canal serie asincrónico no está ocupado, con valor 1.
+buffer          ds    1
+            org    0030H
+main    
+        mov     buffer, #0FFH
+        mov     DPTR, #nombre
+        mov     R1, #00D
+        mov     A, R1
+        movc     A, @A+DPTR
+        INC     R1
+                mov     A, R1
+        movc     A, @A+DPTR
+        INC     R1
+                mov     A, R1
+        movc     A, @A+DPTR
+        INC     R1
+                mov     A, R1
+        movc     A, @A+DPTR
+        ;Inicializo variables
+        mov    hay_dato_rx,#0x00
+        mov    dato_tx_end,#0x01
+        mov    tx_idle,#0x01
+                
+        ;Inicializo Interrupciones
+        call InitPerif_Interrupciones
+        setb    RX_SERIE_I        ;Inicializa puerto de recepción serie como entrada                     
+        
+        ;Inicio enviando un caracter, sólo es un ejemplo
+        mov buffer, #30H
+        mov    tx_idle,#0x00
+        mov    SBUF,#'%'
+        setb   LED_TX_STATUS  ;por ejemplo señalo que el canal de tx está libre
+        clr    LED_TX_STATUS   ;por ejemplo señalo que el canal de tx está libre
+        ;Solo un ejemplo de como enviar un dato SACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAR
+;**Inicio loop principal
+Loop_ppal:      
+          
+          call ProcesarDatoRecibido
+          call EnviarDatos
+          
+salir:  jmp     Loop_ppal
+;fin del loop principal
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: ProcesarDatoRecibido
+; Descripción:
+;       Procesa el dato recibido por puerto serie, para eso evalua el estado
+;       del flag hay_dato_rx, si está en 0x01, lee el valor alojado en dato_rx,
+;       lo incrementa y lo envía a por el canal serie
+;-------------------------------------------------------------------------------
+ProcesarDatoRecibido:
+    push        A
+    ;analiza el estado de hay_dato_rx
+    mov         A,hay_dato_rx
+    mov         hay_dato_rx,#0x00               ;limpio el flag
+    cjne        A,#1,Salir_ProcesarDatoRecibido
+    
+    ;----hago algo con el dato recibido, por ejemplo un eco
+    mov         A,tx_idle
+    cjne        A,#1,Salir_ProcesarDatoRecibido ; Se genera el eco sólo si el canal de salida está libre.   
+    mov         A,dato_rx
+    inc         A
+
+    mov         tx_idle,#0x00 ; El canal estará ocupado
+    mov         SBUF,A  ;envío el eco de lo recibido incrementado
+    
+    
+Salir_ProcesarDatoRecibido:
+    pop         A
+  ret
+ ;-------------------------------------------------------------------------------
+; Nombre: EnviarDatos
+; Descripción:
+;       Analiza el estado del flag dato_tx_end, y en el caso de que valga 0x01.
+;       de ser así invierte el estado de un puerto LED_TX_STATUS para reflejar que
+;       el canal serial de transmisión está libre.
+;-------------------------------------------------------------------------------
+EnviarDatos:
+    mov   A,dato_tx_end
+    mov   dato_tx_end,#0x00       ;limpio el flag
+  
+    cjne  A,#0x01,Salir_EnviarDatos
+    ;si es igual envío otro dato, hago algo....
+    cpl   LED_TX_STATUS   ;por ejemplo señalo que el canal de tx está libre  
+  
+Salir_EnviarDatos:
+  ret
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+; Descripción:
+;       Inicializa las interrupciones y algunos periféricos como el timer
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+
+        ;Para el timer 1
+        mov     TL1, #RECARGA_TMR1	; Recargo la parte baja del Timer 1
+	mov	TH1, #RECARGA_TMR1 	; Recargo la parte alta del Timer 1
+
+	
+        mov     TMOD, #TMOD_INICIAL		; Inicializo Timer/Counter Mode Register
+	mov     TCON, #TCON_INICIAL		; Inicializo Timer/Counter Control Register
+        
+        mov     SCON,#SCON_INICIAL              ;Inicializo puerto serie
+        
+
+	;(3°) Seleccionar la prioridad de las interrupciones
+        mov     IP,#INT_PRIORIDAD        ;Prioridad baja para todos   
+        
+        ;(4°) Habilitar interrupción, es lo último a hacer antes de entrar al lazo ppal.
+        mov     IE,#INT_HABILITADAS      ;Habilito las interrupciones según la cte
+
+      ret
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Serie
+; Descripción:
+;       Rutina de servicio de interrupción del puerto serie
+;-------------------------------------------------------------------------------  
+Isr_Serie:
+
+VerRecepcion:
+	jnb	SCON_RI, VerTransmision		; Verifico si ha Interrumpido por Recepción
+						; En caso que no lo sea voy a ver si es Transmisión
+						; Si no sigo
+Recepcion:					; Proceso la Recepción
+        cpl     LED_RX_STATUS
+	
+        clr	SCON_RI				; Reseteo Flag de Recepción
+	mov	A, SBUF			        ; Recupero Dato Recibido
+	mov     dato_rx,A                       ;lo guardo en memoria
+        mov     hay_dato_rx,#0x01               ;levanto el flag
+	jmp	SalirSerie			; Salgo
+        
+VerTransmision:
+	jnb	SCON_TI, SalirSerie		; Verifico si ha Interrumpido por Transmisión
+						; Si no sigo                                               
+                                                ; Proceso la Transmisión
+	clr	SCON_TI				; Reseteo Flag de Transmisión
+	
+	mov     dato_tx_end,#0x01               ;levanto el flag que finalizó la tx.
+        mov     tx_idle,#0x01                   ;Señalo que el canal de interrupción está libre
+	jmp	SalirSerie			; Salgo
+
+SalirSerie:
+      reti
+ 
+ nombre:
+  db 'b'
+  db 'r'
+  db 'i'
+  db 'a'
+  db 'n'
+;===============================================================================
+  END     main
+

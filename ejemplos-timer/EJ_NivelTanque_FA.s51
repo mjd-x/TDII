@@ -1,0 +1,75 @@
+$bitdef.h                           ; Manejo de a bits.
+$ioAT89C52.h                        ; Incluye los registros del micro.
+
+nivel           EQU         P1
+aguaEV          EQU         P3.0
+jabonEV         EQU         P3.1
+desagoteEV      EQU         P3.2
+led             EQU         P3.7
+
+step            EQU         30h
+
+;::: Segmento de programa :::::::::::::::::::::::::::::::::::::::::::::::::::::
+  ; Programa principal.
+            ASEG
+            ORG     0000h
+            LJMP    main
+
+main:
+    ; Inicialización.
+    MOV     step, #0
+
+    ; Loop principal
+    loop:
+        ; Selector de tarea.
+        MOV     A, step
+        MOV     DPTR, #tablas_jump
+        RL      A
+        JMP     @A+DPTR
+
+tablas_jump:
+    AJMP    desagoteCompleto
+    AJMP    aguaCompleto
+    AJMP    desagoteCompleto
+    AJMP    jabon7
+    AJMP    aguaCompleto
+    AJMP    fin
+
+desagoteCompleto:
+    MOV     A, nivel
+    JNZ     continuar_desagote
+    ; finalizar_desagote
+        CLR     desagoteEV
+        INC     step
+        JMP     loop
+    continuar_desagote:
+        SETB    desagoteEV
+        JMP     loop
+
+aguaCompleto:
+    MOV     A, nivel
+    CJNE    A, #255, continuar_carga_agua
+    ; finalizar_carga_agua
+        CLR     aguaEV
+        INC     step
+        JMP     loop
+    continuar_carga_agua:
+        SETB    aguaEV
+        JMP     loop
+
+jabon7:
+    MOV     A, nivel
+    CJNE    A, #18, continuar_carga_jabon
+    ; finalizar_carga_jabon
+        CLR     jabonEV
+        INC     step
+        JMP     loop
+    continuar_carga_jabon:
+        SETB    jabonEV
+        JMP     loop
+
+fin:
+    SETB    led
+    JMP     loop
+
+    END     main

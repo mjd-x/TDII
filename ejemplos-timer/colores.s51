@@ -1,0 +1,214 @@
+;-------------------------------------------------------------------------------
+; Fecha: 29/06/2020
+; Programador: Seery Brian
+;
+; Descripción: Implementación del puerto serie, uso timer 1 como base de tiempo
+; para generar el baudrate. 
+; La transmisión y recepción se manejan mediante interrupciones.
+; Hay un led LED_RX_STATUS que se invierte cuando se recibe un nuevo caracter, y 
+; de igual manera sucede con el LED_TX_STATUS que se invierte cuando se genera
+; una nueva interrupción.
+; Modificaciones:
+;-------------------------------------------------------------------------------
+
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        
+        ;--- ISRs ---
+        PUBLIC  Isr_Serie                       ;Declaro la interrupcion
+        ;--- Declaro públicas las subrutinas ---
+        PUBLIC  InitPerif_Interrupciones
+        PUBLIC  comparar                         ;Subrutina para ver el color
+
+;---CONSTANTES------------------------------------------------------------------
+LONG_BUFFER             EQU     10          ;Longitud del buffer
+
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00            ;prioridad baja
+INT_HABILITADAS EQU     b'10011000     ;habilitación serie y de timer 1
+  ;Para TIMERs
+TMOD_INICIAL    EQU     b'00100000    ;modo 2 timer 1, con uso de Fosc                                 
+TCON_INICIAL    EQU     b'01000000    ;Registro de control de timers, tmr1 ON
+  ;TIMER 1
+RECARGA_TMR1            EQU     0xFD		; Cuenta de Recarga del Timer 1 para 9600b
+  ;UART
+SCON_INICIAL            EQU     b'01010000      ;Modo 1 (SM0=0;SM1=1) Recepción habilitada
+;Puerto I/O
+RX_SERIE_I              EQU     P3.0    ;entrada de recepción serie
+TX_SERIE_O              EQU     P3.1    ;Salida de transmisión serie.
+LED_ROJO                EQU     P2.0
+LED_VERDE               EQU     P2.1    
+LED_AZUL                EQU     P2.2    
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+            ASEG
+            org 0000h           ;vector reset
+            ljmp    main
+      
+            ASEG
+            org  0023H                   ;(1°) Defino el vector de Interrupción
+            ljmp Isr_Serie               ;(2°) Defino el salto a la Isr.
+           
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            aseg
+            org 00C0h
+stack_init  DS          LONG_STACK             ;Define el segmento de stack       
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+     
+dato_rx         ds    1         ;letra recibido del puerto serie, se carga en ISR
+hay_dato_rx     ds    1         ;flag de que hay un dato recibido canal serie. En '1', hay dato, en '0', no hay dato . RI
+bandera         ds    1
+
+;ESPACIO de BUFFER
+buffer  ds      LONG_BUFFER
+;-------------------------------------------------------------------------------
+;Inicia el código   
+main    
+        ;**Inicializaciones
+        ;Inicializo el STACK
+        mov SP,#(stack_init - 1)                     ;inicializo el stack
+        
+        ;Inicializo Interrupciones
+        call InitPerif_Interrupciones
+        setb    RX_SERIE_I        ;Inicializa puerto de recepción serie como entrada        
+        ;Inicializo variables
+        mov    hay_dato_rx,#0x00        ;No hay nada en SBUF --> RI=0
+        mov R0, #buffer
+        mov @R0, #72H
+        inc R0
+        mov @R0, #6FH
+        inc R0
+        mov @R0, #6AH
+        inc R0
+        mov @R0, #6FH
+        inc R0
+        mov @R0, #0
+        mov bandera, #1
+        
+;**Inicio loop principal
+Loop_ppal:      
+          
+          call ProcesarDatoRecibido
+          mov A, bandera
+          cjne A,#1, Loop_ppal
+          call comparar
+          jmp     Loop_ppal
+;fin del loop principal
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: ProcesarDatoRecibido
+; Descripción:
+;       Procesa el dato recibido por puerto serie, armando una tabla de color
+;-------------------------------------------------------------------------------
+ProcesarDatoRecibido:
+    ;analiza el estado de hay_dato_rx
+    mov         A,hay_dato_rx
+    mov         hay_dato_rx,#0x00              ;limpio el flag
+    cjne        A,#1,Salir_ProcesarDatoRecibido
+    
+    mov @R0, dato_rx
+    INC R0
+    mov A, dato_rx
+    cjne A,#0, Salir_ProcesarDatoRecibido
+    mov bandera, #1                     ;quiere decir que termino de llegar todo
+  
+Salir_ProcesarDatoRecibido:
+  ret
+;--------------------------------------------------------------
+;Comparar entre tabla ROM y tabla RAM
+;--------------------------------------------------------------
+
+comparar:
+        mov R0, #buffer
+        mov DPTR, #color
+        mov R3, #0
+        mov A, R3
+        mov B, @R0
+comp:  
+        movc A,@A+DPTR     
+        cjne A,B, saltear
+        inc R0
+        mov B, @R0
+        inc R3
+        mov A, R3
+        cjne @R0,#0, comp
+        SETB P2.0
+        jmp salir2
+        
+saltear:
+        push A
+        mov R0, #buffer
+        mov DPTR, #color
+        mov R3, #5
+        mov A, R3    
+        mov B, @R0
+
+comp2:  
+        movc A,@A+DPTR
+        cjne A,B, salir2
+        inc R0
+        mov B, @R0
+        inc R3
+        mov A, R3
+        cjne @R0,#0, comp2
+        cpl P2.1
+        jmp salir2
+       
+salir2:
+        mov bandera, #0
+        ret
+
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+; Descripción:
+;       Inicializa las interrupciones y algunos periféricos como el timer
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+
+        ;Para el timer 1
+        mov     TL1, #RECARGA_TMR1	; Recargo la parte baja del Timer 1
+	mov	TH1, #RECARGA_TMR1 	; Recargo la parte alta del Timer 1
+
+        mov     TMOD, #TMOD_INICIAL		; Inicializo Timer/Counter Mode Register
+	mov     TCON, #TCON_INICIAL		; Inicializo Timer/Counter Control Register
+        mov     SCON,#SCON_INICIAL              ;Inicializo puerto serie
+        ;Configuro Timer 1 como fuente de reloj para uart en tx y rx
+        clr     T2CON_RCLK
+        clr     T2CON_TCLK
+	;(3°) Seleccionar la prioridad de las interrupciones
+        mov     IP,#INT_PRIORIDAD        ;Prioridad baja para todos   
+        ;(4°) Habilitar interrupción, es lo último a hacer antes de entrar al lazo ppal.
+        mov     IE,#INT_HABILITADAS      ;Habilito las interrupciones según la cte
+
+      ret
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Serie
+; Descripción:
+;       Rutina de servicio de interrupción del puerto serie
+;-------------------------------------------------------------------------------  
+Isr_Serie:
+        clr	SCON_RI			;Reseteo Flag de Recepción
+	mov     dato_rx,SBUF            ;Resguardo el dato en memoria
+        mov     hay_dato_rx,#0x01       ;Levanto el flag de dato recibido
+      reti
+ 
+color:
+        DB      0x72    ;r
+        DB      0x6F    ;o
+        DB      0x6A    ;j
+        DB      0x6F    ;o
+        DB      0x2C    ;,
+        DB      0x76    ;v
+        DB      0x65    ;e
+        DB      0x72    ;r
+        DB      0x64    ;d
+        DB      0x2C    ;e
+        DB      0x00    ;0
+;===============================================================================
+  END     main
+
+

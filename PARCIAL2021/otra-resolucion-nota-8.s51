@@ -1,0 +1,156 @@
+$bitdef.h       
+$ioAT89C52.h   
+        NAME    main
+        PUBLIC  main
+        
+        PUBLIC  Isr_Tmr0
+        PUBLIC  Reloj
+;--- Declaro públicas las subrutinas ---
+        PUBLIC  InitPerif_Interrupciones
+
+SEG_CODIGO              EQU     0030h    ; inicio seg codigo
+SEG_STACK               EQU     00C0h    ;Segmento de stack
+LONG_STACK              EQU     10     ;Longitud en bytes del stack
+
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00           
+INT_HABILITADAS EQU     b'10000001     
+
+  ;Para TIMERs
+T2MOD_INICIAL    EQU     b'10001001                                       
+T2CON_INICIAL    EQU     b'00000001    
+
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+             ASEG
+            org 0000h
+            ljmp    main
+                       
+           
+           ;INT TIMER0 vector
+           ASEG
+           org 002BH                    
+           ljmp Isr_Tmr0                ;salto a la ISR
+
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ;RSEG ISTACK:IDATA:NOROOT(0)
+            aseg
+            org 00B8h
+stack_init  DS          LONG_STACK             ;segmento de stack       
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+       RSEG    IDATA_Z:DATA:NOROOT  
+       
+horas           ds    1         
+minutos         ds    1         
+segundos        ds    1
+centesimas      ds    1
+tick            ds    1       
+led             EQU    P2.0 
+
+;TABLA RAM
+        RSEG    IDATA_Z:DATA:NOROOT  
+      
+;-------------------------------------------------------------------------------
+;Inicia el código
+        RSEG    RCODE
+        ORG     SEG_CODIGO                      ;define el punto de inicio del Programa (code) 
+
+main    
+;**Inicializaciones
+        ;Inicializo el STACK
+        mov SP,#(stack_init - 1)                     
+        ;Inicializo variables
+        mov    horas,#0         ;reset en 0
+        mov    minutos,#0       ;reset en 0
+        mov    segundos,#0      ;reset en 0
+        mov    centesimas,#0    ;reset en 0
+        clr    led
+        
+        ;Inicializo Interrupciones
+        call InitPerif_Interrupciones ;inicializacion                         
+        
+;loop principal
+Loop_ppal:      
+          mov   A,tick               
+          cjne  A,#1,Loop_ppal       
+          call Reloj
+          
+salir:  jmp     Loop_ppal
+;fin del loop principal
+
+;-------Subrutinas--------------------------------------------------------------
+        RSEG NEAR_CODE:CODE:NOROOT(0)
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: Reloj
+;-------------------------------------------------------------------------------
+Reloj:
+    push        A
+    mov         tick,#0          ;bajo bandera 
+  
+    mov         A,centesimas
+    INC         A                       ;incremento la centesima
+    mov         centesimas,A
+    cjne        A,#100,encender         ;si llega a 100 reinicia cuenta de centesimas si no verifica horario
+   
+    mov         centesimas,#0           ;centesima en 0   
+    mov         A,segundos
+    INC         A                       ;incremento el segundo
+    mov         segundos,A      
+    cjne        A,#60,encender          ;si llega a 60 reinicia cuenta de segundos si no verifica horario
+    
+    mov         segundos,#0             ;segundos en 0
+    mov         A,minutos
+    INC         A                       ;incremento el minuto
+    mov         minutos,A
+    cjne        A,#60D,encender         ;si llega a 60 reinicia cuenta de minutos si no verifica horario
+    
+    mov         minutos,#0              ;minutos en 0
+    mov         A,horas
+    INC         A                       ;incremento el minuto
+    mov         horas,A
+    cjne        A,#24D,encender         ;si llega a 24 reinicia reloj si no verifica horario
+    
+    mov         centesimas,#0
+    mov         segundos,  #0
+    mov         minutos,   #0    
+    mov         horas,     #0    
+    
+encender:
+    mov         A,horas
+    cjne        A,#2,salir_reloj    
+    mov         A,minutos
+    cjne        A,#1,salir_reloj 
+    mov         A,segundos
+    cjne        A,#10,salir_reloj 
+    mov         A,centesimas
+    cjne        A,#90,salir_reloj
+    setb        led
+    
+salir_reloj:
+    pop         A
+  ret
+
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+        mov     T2MOD, #TMOD_INICIAL
+	mov     T2CON, #T2CON_INICIAL
+        mov     IP,#INT_PRIORIDAD        ;Prioridad baja para todos   
+        mov     IE,#INT_HABILITADAS      ;Habilito las interrupciones según la cte
+      ret
+
+
+;-------------------------------------------------------------------------------
+;===ISRs========================================================================
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Tmr0
+;-------------------------------------------------------------------------------  
+ Isr_Tmr0:
+      mov       tick,#1
+      reti
+ 
+;===============================================================================
+  END     main

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspace>
+    <project>
+        <path>$WS_DIR$\..\..\practica\PARCIAL2021\PARCIAL2021.ewp</path>
+    </project>
+    <project>
+        <path>$WS_DIR$\tp2.ewp</path>
+    </project>
+    <batchBuild />
+</workspace>

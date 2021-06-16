@@ -1,0 +1,21 @@
+Enunciado:
+
+
+Proceso:   llenado de envases vacuna COVID 19
+
+
+
+Luego de reset, el micro enciende el MOTOR de una cinta transportadora y espera hasta que llegue una botella vacia detectada por un sensor_botella SB que ingresa por interrupcion externa cero INT0 y detiene la cinta.
+
+
+Utilizando interrupcion de Timer 0 producir un pulso de 47 ms en P2.0
+ (electrovalvula de compuesto tipo A)
+     
+ 
+
+luego utilizando interrupcion de Timer 1 producir un pulso de 60 ms en P2.1
+ (electrovalvula de compuesto tipo B)
+     
+
+
+Finalmente encender la cinta y el proceso se repite 20 veces y termina con la cinta detenida y electro valvulas cerradas

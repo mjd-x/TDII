@@ -1,0 +1,384 @@
+;-------------------------------------------------------------------------------
+; Fecha: 04/06/2021
+;
+; Programador: ALFONSO - DELCOURT - DONIS - FUENTES 
+;
+; Descripción: TP 2
+
+; Modificaciones:
+;
+;-------------------------------------------------------------------------------
+
+$bitdef.h       ;manejo de a bits 
+$ioAT89C52.h    ;incluye los registros del microcontrolador
+
+        NAME    main
+        PUBLIC  main
+        
+        ;--ISRs
+        PUBLIC  Isr_Tmr0
+        ;--Declaro públicas las subrutinas
+        PUBLIC  InitPerif_Interrupciones
+
+
+;---CONSTANTES------------------------------------------------------------------
+
+  ;Registros generales
+CTE_SUMA        EQU     0x3E        ; Número cte para operar
+LONG_BUFFER     EQU     10          ; Longitud del buffer
+ADDR_INICIAL    EQU     0x40        ; Dirección de memoria inicial
+
+  ;Constantes para los segmentos
+SEG_CODIGO     EQU     0030h    ; inicio seg codigo
+SEG_DATOS1     EQU     0020h    ; seg datos     
+SEG_CONST      EQU     0090h    ; Constantes en rom
+SEG_STACK      EQU     00C0h    ; Segmento de stack
+
+LONG_STACK     EQU     10       ; Longitud en bytes del stack
+
+  ;Constantes de reloj
+FRECUENCIA_CLOCK        EQU     12000        ;Frecuencia de clock externa, kHz
+DIV_CLOCK_INT           EQU     12           ;Divisor interno
+FREC_PERIF              EQU     (FRECUENCIA_CLOCK/DIV_CLOCK_INT)     ;Frecuencia recibida por los periféricos
+  
+  ;Para interrupciones
+INT_PRIORIDAD   EQU     0x00    ; prioridad baja
+
+INT_HABILITADAS EQU     b'10000010    ; IE_EA=1, IE_ET0=1
+  ;Para TIMER
+TMOD_INICIAL    EQU     b'00000001    ; timer 0, gate=0, CT=0, M1/M0=01 para modo 1
+                                      ; modo 1 timer 0, con uso del Fosc
+                                      
+TCON_INICIAL    EQU     b'00010000    ; Registro de control de timers, tmr0 ON (TR0=1)
+
+  ;TIMER 0
+TICK_TMR0               EQU     1     ; PerúŒdo del tick en ms
+VALOR_TIMER             EQU     (FREC_PERIF*TICK_TMR0)  ;Valor del timer (03E8h = 1000d)
+CICLOS_TMR0_DETENIDO    EQU     7     ; Tiempo que permanece detenido en la ISR el Timer 0.
+RECARGA_TMR0            EQU     (0xFFFF-VALOR_TIMER+CICLOS_TMR0_DETENIDO) ; Valor de recarga del timer (FC17h)
+
+  ;Para Isr_Tmr0
+
+
+  ;Para programaPrincipal
+BOTON_UP                EQU     P1.0  ; boton para subir cantidad de pulsos
+BOTON_DOWN              EQU     P1.1  ; boton para bajar cantidad de pulsos
+LLAVE_ON_OFF            EQU     P1.2  ; llave que inicia los burst
+LLAVE_FR                EQU     P1.3  ; llave para elegir frecuencia
+LED                     EQU     P1.4  ; LED que parpadea en ON
+BURST                   EQU     P1.5  ; por aca sale el burst de pulsos
+SIETE_SEGMENTOS         EQU     P2    ; 7 segmentos
+
+
+MILISEGUNDO             EQU     0030H ; tick timer milisegundos si LLAVE_ON_OFF = 1
+REPETICION              EQU     0031H ; tick cantidad de pulsos que faltan para el burst
+CANT_PULSOS             EQU     0032H ; cantidad de pulsos elegidos con botones y 7 segmentos
+CANT_PULSOS_ANT		EQU	0036H ; para comparar si cambio la cantidad de pulsos
+TIEMPO_PULSO_LED        EQU     0033H ; periodo de LED segun la frecuencia elegida (125 ms / 250 ms)
+PERIODO_BURST           EQU     0034H ; periodo del burst segun frecuencia elegida (50 ms / 100 ms)
+TIEMPO                  EQU     0035H ; tick timer si LLAVE_ON_OFF = 0, comprobar llaves segun este periodo
+LLAVE_FR_ANT		EQU	0020H.0 ; bit para comparar si cambio la seleccion de frecuencia
+XOR_P                   EQU	0020H.1 ; bit auxiliar para comparar cambio de seleccion de frecuencia, XOR
+REGISTRO_DOS            EQU     02H ; variable para resguardar el registro R2
+REGISTRO_TRES           EQU     03H ; variable para resguardar el registro R3
+REGISTRO_CUATRO         EQU     04H ; variable para resguardar el registro R4
+
+;-------------------------------------------------------------------------------
+;---SEGMENTO DE CODIGO----------------------------------------------------------
+           ; Direct the reset vector to the program entry label. 
+           ;asegn   INTVEC:CODE, 0x0000
+            ASEG
+            ORG 0000h                     ; RESET
+            LJMP main                     ; salto al main                       
+           
+           ;INT TIMER0 vector
+            ASEG
+            ORG 000BH                     ;(1°) Definir el vector de interrupción
+            LJMP Isr_Tmr0                 ;(2°) Definir el el salto a la ISR
+;---SEGMENTO DE STACK-----------------------------------------------------------
+            ;RSEG ISTACK:IDATA:NOROOT(0)
+            ASEG
+            ORG 00b8h
+stack_init  DS          LONG_STACK             ; Define el segmento de stack       
+;---SEGMENTO DE DATOS-----------------------------------------------------------
+
+;:::Segmento relocalizable::::::::::::::
+;       RSEG    IDATA_Z:DATA:NOROOT  
+;:::::::::::::::::::::::::::::::::::::::
+;::Segmento absoluto::::::::::::::::::::
+        ASEG    
+        ORG     SEG_DATOS1
+;:::::::::::::::::::::::::::::::::::::::
+
+var_bit        DS       1   
+
+;ESPACIO de BUFFER
+buffer  DS      LONG_BUFFER
+
+;TABLA RAM
+        RSEG    IDATA_Z:DATA:NOROOT  
+     
+;-------------------------------------------------------------------------------
+;Inicia el código
+        
+        ; RSEG    NEAR_CODE:CODE:ROOT            ; defino un segmento de código
+        RSEG    RCODE
+        ORG     SEG_CODIGO                      ; define el punto de inicio del Programa (code) 
+
+
+main    
+
+;**Inicializaciones
+        ; Inicializo el STACK
+        MOV     SP,#stack_init-1                ; inicializo el stack
+        
+        MOV     MILISEGUNDO, #251               ; Mueve a la variable MILISEGUNDOS el tiempo máximo + 1 (primera pasada)
+        MOV     CANT_PULSOS, #0                 ; Mueve a la variable CANT_PULSOS la cantidad máxima de pulsos
+        MOV     REPETICION, CANT_PULSOS         ; Mueve a la variable REPETICION la cantidad máxima de pulsos
+	MOV	CANT_PULSOS_ANT, CANT_PULSOS    ; Carga la variable para comparacion
+	CLR 	LLAVE_FR_ANT   		        ; La frecuencia por defecto es de 2Hz (500ms - 150ms)
+        MOV     TIEMPO, #100                    ; cargo el periodo de TIEMPO para comprobar las llaves con 100ms
+        MOV     P1, #0                          ; Limpia todos los pines del puerto
+        MOV     P2, #0                          ; Limpia todos los pines del puerto   
+
+        ;Inicializo Interrupciones
+        CALL    InitPerif_Interrupciones
+                
+;**Inicio loop principal    
+Loop_ppal: 
+	; COMPROBACION LLAVE ON/OFF
+        JB      LLAVE_ON_OFF, Loop_ppal      ; Si LLAVE_ON_OFF = 1, salta a Loop_ppal (no hace nada)
+        
+        MOV     R2, TIEMPO                   ; Carga R2 con el periodo de TIEMPO (100ms) 
+        CJNE    R2, #100, COMPROBAR_LLAVE_FR ; SI PASARON LOS 100ms marcados por la interrupción, se comprueban los botones
+        JB      BOTON_UP, UP                 ; si BOTON_UP = 1, salta a UP
+        JB      BOTON_DOWN, DOWN             ; si BOTON_DOWN = 1, salta a DOWN
+        JMP     Loop_ppal                    ; Vuelve al principio
+
+COMPROBAR_LLAVE_FR: 
+        ; PARA SABER SI LA LLAVE DE FRECUENCIA CAMBIO DE ESTADO, SE USA LA OPERACION XOR=A¬B+¬AB (A=LLAVE_FR_ANT, B=LLAVE_FR)
+        MOV     C,LLAVE_FR_ANT                    ; Mueve al carry el bit en LLAVE_FR_ANT
+        ANL     C,/LLAVE_FR                       ; Realiza operacion AND entre el carry y el valor en ¬LLAVE_FR
+        MOV     XOR_P, C                          ; Mueve el resultado de la operacion a XOR_P
+        MOV     C,LLAVE_FR                        ; Mueve al carry el bit de LLAVE_FR
+        ANL     C,/LLAVE_FR_ANT                   ; Realiza operacion AND entre el carry y el el valor en ¬LLAVE_FR_ANT
+        ORL     C, XOR_P                          ; SI C=1 NO CAMBIO EL ESTADO, SI C=0 CAMBIO DE ESTADO
+        JNC     VERIFICAR_FRECUENCIA              ; Si cambio  el estado de la llave de FR verifica valor nuevo
+
+        ; PARA SABER SI HAY QUE ACTUALIZAR EL 7 SEGMENTOS
+        MOV     R2, CANT_PULSOS_ANT               ; Mueve la cantidad de pulsos anterior a R2 para comparar
+        CJNE    R2, #CANT_PULSOS, ACTUALIZAR_7SEG ; Si cambio la cantidad de pulsos actualiza el valor del 7 segmentos
+        JMP     Loop_ppal                         ; Vuelve al principio
+        
+UP:     
+        MOV     CANT_PULSOS_ANT, CANT_PULSOS      ; Guardo el valor para comparar si cambio
+        MOV     R4, CANT_PULSOS                   ; mueve a R4 la cantidad de pulsos actual
+        CJNE    R4, #9, INCREMENTO                ; si se paso de 9 pulsos, saltar a CERO
+        MOV     CANT_PULSOS, #0                   ; si se paso de 9 pulsos, cambiar a 0
+        MOV     REPETICION, #(CANT_PULSOS*2)      ; Mueve a la variable REPETICION la cantidad de pulsos
+        JMP     Loop_ppal                         ; Vuelve al principio           
+
+INCREMENTO:
+        INC     CANT_PULSOS                       ; incrementa la cantidad de pulsos en 1
+        MOV     REPETICION, #(CANT_PULSOS*2)      ; Mueve a la variable REPETICION la cantidad de pulsos
+        JMP     Loop_ppal                         ; Vuelve al principio
+
+DOWN:   
+        MOV     CANT_PULSOS_ANT, CANT_PULSOS      ; Guardo el valor para comparar si cambio
+        MOV     R4, CANT_PULSOS                   ; mueve a R4 la cantidad de pulsos actual
+        CJNE    R4, #0, DECREMENTO                ; si se paso de 0 pulsos, saltar a NUEVE
+        MOV     CANT_PULSOS, #9                   ; si se paso de 0 pulsos, cambiar a 9
+        MOV     REPETICION, #(CANT_PULSOS*2)      ; Mueve a la variable REPETICION la cantidad de pulsos
+        JMP     Loop_ppal                         ; Vuelve al principio
+
+DECREMENTO:
+        DEC     CANT_PULSOS                       ; decrementa la cantidad de pulsos en 1
+        MOV     REPETICION, #(CANT_PULSOS*2)      ; Mueve a la variable REPETICION la cantidad de pulsos
+        JMP     Loop_ppal                         ; Vuelve al principio
+
+        ;ACTUALIZACION 7 SEGMENTOS
+ACTUALIZAR_7SEG:
+        MOV     DPTR, #TABLA_7SEGMENTOS           ; carga en el dptr inicio de la tabla 7 segmentos
+        MOV     A, #CANT_PULSOS                   ; mueve a A la cantidad de pulsos
+        MOVC    A, @A+DPTR                        ; lee de la tabla el valor que corresponde al numero
+        MOV     SIETE_SEGMENTOS, A                ; envia el valor al 7 segmentos
+	MOV 	CANT_PULSOS_ANT, CANT_PULSOS      ; Carga variable para comparacion con el valor nuevo
+	JMP	Loop_ppal			  ; Vuelve al principio
+        
+	;ACTUALIZACION FRECUENCIA
+VERIFICAR_FRECUENCIA:
+        JB      LLAVE_FR, ACTUALIZAR_FRECUENCIA   ; si LLAVE_FR = 1, salta a ACTUALIZAR_FRECUENCIA
+        MOV     TIEMPO_PULSO_LED, #250            ; periodo del LED 250 ms (frecuencia de 10Hz por defecto)
+        MOV     PERIODO_BURST, #150               ; periodo del burst 100ms (frecuencia de 10Hz por defecto) -> 250 - 100 = 150
+        MOV     MILISEGUNDO, #(TIEMPO_PULSO_LED+1); cargo cuantos ms es el periodo del LED
+        MOV     C,LLAVE_FR                        ; paso el bit mediante el carry
+	MOV 	LLAVE_FR_ANT, C                   ; Carga variable para comparacion con el valor nuevo
+        JMP     Loop_ppal                         ; Vuelve al principio
+
+ACTUALIZAR_FRECUENCIA:
+        MOV     TIEMPO_PULSO_LED, #125            ; si LLAVE_FREC = 0, frecuencia 2Hz, periodo LED 125ms
+        MOV     PERIODO_BURST, #75                ; periodo burst 50ms -> 125 - 50 = 75
+        MOV     MILISEGUNDO, #(TIEMPO_PULSO_LED+1); cargo cuantos ms es el periodo del LED
+	MOV     C,LLAVE_FR                        ; paso el bit mediante el carry	
+        MOV 	LLAVE_FR_ANT, C                   ; Carga variable para comparacion con el valor nuevo		
+        JMP     Loop_ppal                         ; Vuelve al principio
+
+;-------Subrutinas--------------------------------------------------------------
+        RSEG NEAR_CODE:CODE:NOROOT(0)
+        
+;===========SUBRUTINAS==========================================================
+;-------------------------------------------------------------------------------
+; Nombre: InitPerif_Interrupciones
+; Parametros: ninguno
+; Devuelve: nada
+; Modifica:
+;       IP, IE, TCON, TMOD, TH0, TL0
+; Nivel de Stack: 2
+;
+; Descripción:
+;       Inicializa las interrupciones y el timer 0
+;-------------------------------------------------------------------------------
+InitPerif_Interrupciones:
+        ; Para inicializar el timer 0
+        MOV     TL0, #LOW(RECARGA_TMR0)	 ; Recargo la parte baja del Timer 0
+	MOV	TH0, #HIGH(RECARGA_TMR0) ; Recargo la parte alta del Timer 0
+
+	MOV     TMOD, #TMOD_INICIAL	 ; Inicializo Timer/Counter Mode Register
+	MOV     TCON, #TCON_INICIAL	 ; Inicializo Timer/Counter Control Register
+
+	;(3°) Seleccionar la prioridad de las interrupciones
+        MOV     IP,#INT_PRIORIDAD        ; Prioridad baja para todos   
+        
+        ;(4°) Habilitar interrupción, es lo último a hacer antes de entrar al lazo ppal
+        MOV     IE,#INT_HABILITADAS      ; Habilito las interrupciones según la cte
+
+      RET
+
+;===ISRs========================================================================
+
+;-------------------------------------------------------------------------------
+; Nombre: Isr_Tmr0
+; Parametros: ninguno
+; Devuelve:nada
+; Modifica:
+;       R2 (REPETICION), R3 (MILISEGUNDO), BURST, R4 (CANT_PULSOS)
+;       TIEMPO_PULSO_LED, REPETICION, MILISEGUNDO, PERIODO_BURST
+; Nivel de Stack: 2
+;
+; Descripción:
+;       Rutina de servicio de interrupción del timer 0
+;-------------------------------------------------------------------------------  
+ Isr_Tmr0:
+      ;-------------------------------------------------------------------------
+      ; Preparo todo para atender la interrupción (Salvo el contexto)
+      ;-------------------------------------------------------------------------     
+      
+       PUSH	PSW				; Resguardo registros modificados por esta subrutina
+       PUSH	A                               ; Resguardo Acumulador
+       PUSH     REGISTRO_DOS                    ; Resguardo registro R2
+       PUSH     REGISTRO_TRES                   ; Resguardo registro R3
+       PUSH     REGISTRO_CUATRO                 ; Resguardo registro R4
+
+       CLR      IE_EA                           ; EA, Deshabitito las Interrupciones
+       CLR	TCON_TR0			; Detengo la cuenta del Timer 0
+
+       MOV	A, # LOW (RECARGA_TMR0)	        ; Recupero el valor la parte baja de Recarga del Timer 0
+       ADD	A, TL0				; Le sumo lo acumulado en la parte baja del Timer 0 desde 
+                                                ; que se produjo la Interrupción
+       MOV	TL0, A				; Recargo la parte baja del Timer 0
+
+       MOV	A, # HIGH (RECARGA_TMR0)	; Recupero el valor la parte alta de Recarga del Timer 0
+       ADDC	A, TH0				; Le sumo lo acumulado en la parte alta del Timer 0 desde 
+                                                ; que se produjo la Interrupción
+       MOV	TH0, A				; Recargo la parte alta del Timer 0
+
+       SETB	TCON_TR0			; Arranco la cuenta del Timer 0
+       SETB	IE_EA				; Habitito las Interrupciones
+
+      ;-------------------------------------------------------------------------
+      ; Rutina de Interrupción
+      ;-------------------------------------------------------------------------
+        JNB     LLAVE_ON_OFF, COMPROBAR_LLAVES       ; Si LLAVE_ON_OFF = 0, salta a COMPROBAR_LLAVES
+       ;Si LLAVE_ON_OFF = 1 significa que no se pueden modificar los valores y se tiene que atender la parte de ejecución de BURST y LED
+        MOV     R2, REPETICION                       ; Mueve a R2 la cantidad de repeticiones a realizar
+        MOV     R3, MILISEGUNDO                      ; Mueve a R3 la cantidad de milisegundos restantes
+        MOV     R4, CANT_PULSOS                      ; Mueve a R4 la cantidad de pulsos elegidos
+        
+	CJNE	R3/*MILISEGUNDO*/, #(TIEMPO_PULSO_LED+1), MIL100 ; Si milisegundo = 251/126, principio del periodo del LED
+MIL0:	;Es el momento en el que pasaron 0ms desde que inició el primer pulso
+        SETB 	LED                                  ; enciende el LED
+        MOV	MILISEGUNDO,#TIEMPO_PULSO_LED        ; decrementa milisegundo a 250/125
+        CJNE    R4/*CANT_PULSOS*/, #0, MIL0_ACTIVAR  ; Si hay que realizar mas de un pulso (CANT_PULSOS > 0) va a ACTIVAR	
+	JMP     SALIR 	                             ; Si se eligio cantidad de pulsos 0 solo decrementa MILISEGUNDO y sale
+        
+MIL0_ACTIVAR:
+        SETB 	BURST                                ; empieza el BURST
+	MOV	REPETICION, #(CANT_PULSOS*2)         ; indico cuantos pulsos faltan realizar (subida y bajada)
+        DEC     REPETICION                           ; decrementa REPETICION en 1 (ya subio 1 vez)
+	JMP     SALIR 	
+
+MIL100: ;Es el momento en el que pasaron 100ms desde que inició el primer pulso
+	CJNE	R3/*MILISEGUNDO*/, #(TIEMPO_PULSO_LED-PERIODO_BURST), MIL250 ; si no pasaron 100 / 50ms (termino el periodo del burst), salta a MIL250
+	DEC	MILISEGUNDO                               ; decrementa en 1 milisegundo	
+        CJNE    R4/*CANT_PULSOS*/, #0, MIL100_ACTIVAR     ; Si hay que realizar mas de un pulso (CANT_PULSOS > 0) va a ACTIVAR
+        JMP     SALIR 	                                  ; Si se eligio cantidad de pulsos 0 solo decrementa MILISEGUNDO y sale
+
+MIL100_ACTIVAR:
+        CPL 	BURST                                     ; empieza un nuevo periodo BURST
+	MOV	REPETICION, #(CANT_PULSOS*2)              ; recarga cuantos pulsos faltan realizar (subida y bajada)
+        DEC     REPETICION                                ; decrementa REPETICION en 1 (ya subio 1 vez)
+	JMP     SALIR 
+
+MIL250: ;Es el momento en el que pasaron 250ms desde que inició el primer pulso
+	CJNE	R3/*MILISEGUNDO*/, #0, REP0           ; si no termino el periodo el LED (250/125) salta a REP0
+	JNB	LED, MIL0                             ; si el LED esta apagado, salta a MIL0 (empieza periodo LED de vuelta)
+	CPL 	LED                                   ; prende el LED
+	MOV	MILISEGUNDO, #TIEMPO_PULSO_LED        ; recarga periodo del LED
+	JMP     SALIR 
+REP0:	
+	CJNE	R2/*REPETICION*/, #0, COMPLEMENTO     ; si no hizo todos los pulsos del burst, salta a COMPLEMENTO
+	DEC     MILISEGUNDO                           ; solo decrementa el contador de milisegundos restantes
+        JMP     SALIR 
+ 	
+COMPLEMENTO:
+	CPL 	BURST                                 ; complementa el estado de BURST
+	DEC	REPETICION                            ; decrementa en 1 el numero de repeticiones
+	DEC	MILISEGUNDO                           ; decrementa en 1 los milisegundos
+	JMP     SALIR 
+
+SALIR:
+      ; Recupero todos los registros y salgo de la rutina de interrupcion
+      POP       REGISTRO_CUATRO     ; Recupero registro R4
+      POP       REGISTRO_TRES       ; Recupero registro R3
+      POP       REGISTRO_DOS        ; Recupero registro R2
+      POP	A		    ; Recupero registros previamente resguardados
+      POP	PSW
+
+
+      RETI                         ; no hace nada mas y sale de la interrupcion
+
+;---------------Comprobaciones--------------------------------------------------
+
+COMPROBAR_LLAVES:
+        CLR     LED                      ; Si el sistema no está disparado, el led debe estar apagado
+        CLR     BURST                    ; Si el sistema no está disparado, el burst debe estar apagado
+	DJNZ    TIEMPO, SALIR            ; cuenta cuanto resta de TIEMPO y si es >0 sale de la rutina directamente
+	MOV	TIEMPO, #100             ; recarga el periodo de TIEMPO para refrescar todo de nuevo en 100 ms
+        JMP     SALIR
+
+;===============================================================================
+TABLA_7SEGMENTOS:                       ; define la tabla de valores para el 7 segmentos
+                  db    03FH            ; 0
+                  db    06H             ; 1
+                  db    5BH             ; 2 
+                  db    4FH             ; 3
+                  db    66H             ; 4
+                  db    6DH             ; 5
+                  db    7DH             ; 6
+                  db    07H             ; 7
+                  db    7FH             ; 8
+                  db    67H             ; 9
+                  
+
+
+  END     main                          ; fin del programa
